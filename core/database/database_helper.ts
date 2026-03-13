@@ -1,0 +1,80 @@
+/**
+ * Web-specific database helper that provides a mock implementation.
+ * SQLite is not supported on web, so this uses AsyncStorage as a fallback
+ * or simply returns empty results for database operations.
+ */
+
+class DatabaseHelper {
+  async init() {
+    console.log('Running on web - SQLite disabled, using AsyncStorage for persistence');
+    // On web, we rely on AsyncStorage which is already used for auth tokens
+    return Promise.resolve();
+  }
+
+  // User operations - web uses AsyncStorage instead
+  async saveUser(_userData: any) {
+    console.log('Web platform - SQLite saveUser skipped (using AsyncStorage)');
+    return Promise.resolve();
+  }
+
+  async getUser(_deviceId: string) {
+    console.log('Web platform - SQLite getUser skipped (using AsyncStorage)');
+    return null;
+  }
+
+  async deleteUser(_deviceId: string) {
+    console.log('Web platform - SQLite deleteUser skipped');
+    return Promise.resolve();
+  }
+
+  // Movie operations - return empty arrays on web
+  // Movies will be fetched fresh from API each time on web
+  async saveMovies(_movies: any[]) {
+    console.log('Web platform - SQLite saveMovies skipped (no offline caching)');
+    return Promise.resolve();
+  }
+
+  async getMovies(_limit: number = 50, _offset: number = 0) {
+    console.log('Web platform - returning empty array (movies will be fetched from API)');
+    return [];
+  }
+
+  async searchMovies(_query: string) {
+    console.log('Web platform - returning empty search results (will search from API)');
+    return [];
+  }
+
+  async clearMovies() {
+    console.log('Web platform - clearMovies skipped');
+    return Promise.resolve();
+  }
+
+  async getMoviesCount() {
+    console.log('Web platform - returning 0 for movie count');
+    return 0;
+  }
+
+  // Router operations - return empty arrays on web
+  async saveRouters(_routers: any[]) {
+    console.log('Web platform - SQLite saveRouters skipped');
+    return Promise.resolve();
+  }
+
+  async getRouters(): Promise<any[]> {
+    console.log('Web platform - returning empty array (routers will be fetched from API)');
+    return [];
+  }
+
+  // Profile operations - return null on web
+  async saveProfile(_profile: any) {
+    console.log('Web platform - SQLite saveProfile skipped');
+    return Promise.resolve();
+  }
+
+  async getProfile(): Promise<any | null> {
+    console.log('Web platform - returning null (profile will be fetched from API)');
+    return null;
+  }
+}
+
+export const databaseHelper = new DatabaseHelper();
