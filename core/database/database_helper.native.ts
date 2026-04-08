@@ -16,6 +16,12 @@ const DB_VERSION_KEY = '__db_version';
 
 class DatabaseHelper {
   private db: SQLite.SQLiteDatabase | null = null;
+  private async ensureDB() {
+  if (!this.db) {
+    console.log('[DB] Reconnecting to DB...');
+    this.db = await SQLite.openDatabaseAsync(DB_NAME);
+  }
+}
 
   // ── Init ────────────────────────────────────────────────────────────────────
 
@@ -32,7 +38,7 @@ class DatabaseHelper {
   }
 
   private async createTables() {
-    if (!this.db) return;
+    await this.ensureDB();
 
     // users
     await this.db.execAsync(`
@@ -122,7 +128,7 @@ class DatabaseHelper {
   }
 
   private async runMigrations() {
-    if (!this.db) return;
+    await this.ensureDB();
     // Add any missing columns added in v2 (safe no-op if already present)
     const alterCmds = [
       'ALTER TABLE movies ADD COLUMN content_type INTEGER DEFAULT 0',
@@ -139,7 +145,7 @@ class DatabaseHelper {
   // ── Users ───────────────────────────────────────────────────────────────────
 
   async saveUser(userData: any) {
-    if (!this.db) return;
+    await this.ensureDB();
     await this.db.runAsync(
       `INSERT OR REPLACE INTO users
        (user_id, password, token, token_expiry, device_id, plan_name, plan_expiry, updated_at)
@@ -157,14 +163,14 @@ class DatabaseHelper {
   }
 
   async deleteUser(deviceId: string) {
-    if (!this.db) return;
+    await this.ensureDB();
     await this.db.runAsync('DELETE FROM users WHERE device_id = ?', deviceId);
   }
 
   // ── Movies ──────────────────────────────────────────────────────────────────
 
   async saveMovies(movies: any[]) {
-    if (!this.db) return;
+    await this.ensureDB();
     for (const movie of movies) {
       await this.db.runAsync(
         `INSERT OR REPLACE INTO movies
@@ -232,7 +238,7 @@ class DatabaseHelper {
   }
 
   async clearMovies() {
-    if (!this.db) return;
+    await this.ensureDB();
     await this.db.runAsync('DELETE FROM movies');
   }
 
@@ -245,7 +251,7 @@ class DatabaseHelper {
   // ── Routers ─────────────────────────────────────────────────────────────────
 
   async saveRouters(routers: any[]) {
-    if (!this.db) return;
+    await this.ensureDB();
     // Clear old list before inserting fresh data
     await this.db.runAsync('DELETE FROM routers');
     for (const r of routers) {
@@ -285,7 +291,7 @@ class DatabaseHelper {
   // ── Profile ─────────────────────────────────────────────────────────────────
 
   async saveProfile(profile: any) {
-    if (!this.db) return;
+    await this.ensureDB();
     await this.db.runAsync(
       `INSERT OR REPLACE INTO profile
        (id, user_id, username, plan_name, balance, available_downloads,

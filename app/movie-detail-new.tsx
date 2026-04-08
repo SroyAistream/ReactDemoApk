@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Dimensions,
   Modal,
-  ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -15,14 +14,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHubDetection } from '../core/hooks/useHubDetection';
-import { getPlaybackUrl, PlaybackResult } from '../core/services/PlaybackService';
-import { 
-  checkDownloadRights, 
-  DownloadRightsResult, 
-  STATUS_CODES 
-} from '../core/services/DownloadRightsService';
-
-import { COMPANY_NAME } from './constants/app_constants';
+import { getPlaybackUrl } from '../core/services/PlaybackService';
+import { checkDownloadRights } from '../core/services/DownloadRightsService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PREVIEW_HEIGHT = SCREEN_HEIGHT * 0.65;
@@ -41,12 +34,8 @@ export default function MovieDetailScreen() {
   // Simple gateway-based hub detection
   const { deviceIp, gatewayIp, isHubConnected, isLoading, detectHub, HUB_GATEWAY_IP } = useHubDetection();
 
-  const [showDebugDialog, setShowDebugDialog] = useState(false);
   const [showErrorDialog, setShowErrorDialog] = useState(false);
   const [showHubNotConnectedDialog, setShowHubNotConnectedDialog] = useState(false);
-  const [isCheckingRights, setIsCheckingRights] = useState(false);
-  const [rightsResult, setRightsResult] = useState<DownloadRightsResult | null>(null);
-  const [playbackResult, setPlaybackResult] = useState<PlaybackResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Parse the movie object from params
@@ -70,112 +59,40 @@ export default function MovieDetailScreen() {
 
     const movieId = movie.movie_id || movie.movieId || movie.id;
     
-    console.log('====================================================');
-    console.log('[Play] STEP 1 — PLAY BUTTON CLICKED');
-    console.log('[Play] DO NOT open player immediately - Start validation');
-    console.log('[Play] Movie ID:', movieId);
-    console.log('====================================================');
-    
     // Re-detect hub connection first
     detectHub();
-    
-    // Reset state
-    setRightsResult(null);
-    setPlaybackResult(null);
+
+    // Reset error state
     setErrorMessage('');
 
-    // ====================================================
-    // STEP 2: Check if connected to Media Hub
-    // ====================================================
-    console.log('[Play] STEP 2 — Checking Hub Connection');
-    console.log('[Play] Gateway IP:', gatewayIp);
-    console.log('[Play] Is Hub Connected:', isHubConnected);
-
     if (!isHubConnected) {
-      // NOT CONNECTED TO HUB - Show popup and STOP
-      console.log('[Play] NOT connected to Media Hub');
-      console.log('[Play] Showing "Media Hub not connected" popup');
-      console.log('[Play] STOPPING playback flow');
-      console.log('====================================================');
-      
       setShowHubNotConnectedDialog(true);
       return;
     }
 
-    // ====================================================
-    // CONNECTED TO HUB - Proceed with rights check
-    // ====================================================
-    console.log('[Play] Connected to Media Hub - Proceeding with rights check');
-    
-    // Show loading state
-    setIsCheckingRights(true);
-    setShowDebugDialog(true);
-
     // Call get_download_right API
-    console.log('[Play] Calling get_download_right API...');
     const rights = await checkDownloadRights(movieId, isHubConnected);
-    setRightsResult(rights);
-    setIsCheckingRights(false);
 
-    // ====================================================
-    // RESPONSE HANDLING: Check status.code
-    // ====================================================
-    console.log('[Play] Status code received:', rights.statusCode);
-    
-    // IF status.code != 0: show proper message, STOP playback flow
-    if (rights.statusCode !== STATUS_CODES.OK) {
-      console.log('[Play] Status code is NOT 0 - STOPPING playback flow');
-      console.log('[Play] Error message:', rights.message);
+    // IF status.code != 0: show error dialog, STOP playback flow
+    if (rights.statusCode !== 0) {
       setErrorMessage(rights.message || 'Playback not allowed');
       setShowErrorDialog(true);
-      setShowDebugDialog(false);
       return;
     }
 
-    // IF status.code == 0: extract randomkey and proceed
-    console.log('[Play] Status code is 0 (OK) - Proceeding to URL construction');
-    console.log('[Play] RandomKey received:', rights.randomKey);
-
-    // ====================================================
-    // STEP 3: BUILD PLAYBACK URL (ANDROID STYLE)
-    // ====================================================
-    
-    // Build playback URL using PlaybackService
+    // IF status.code == 0: build URL and navigate directly to player
     const result = await getPlaybackUrl(movie, isHubConnected);
-    setPlaybackResult(result);
-    
-    // Log all debug info
-    console.log('[Play] URL Construction complete');
-    console.log('[Play] fileName used:', result.debugInfo.normalizedFileName);
-    console.log('[Play] FINAL m3u8 URL:', result.debugInfo.finalUrl);
-    console.log('[Play] Headers to inject:', result.debugInfo.headersApplied);
-    console.log('====================================================');
-  };
 
-  /**
-   * Navigate to player with the built URL and headers
-   */
-  const navigateToPlayer = () => {
-    if (!playbackResult?.success) return;
-    
-    setShowDebugDialog(false);
-    
-    console.log('====================================================');
-    console.log('[Play] OPENING PLAYER');
-    console.log('[Play] Final m3u8 URL:', playbackResult.playbackUrl);
-    console.log('[Play] Headers attached:', JSON.stringify(playbackResult.headers, null, 2));
-    console.log('====================================================');
-    
-    // Navigate to player with URL and headers
-    router.push({
-      pathname: '/player' as any,
-      params: {
-        playbackUrl: playbackResult.playbackUrl,
-        movieName: movie?.name || 'Video',
-        headers: JSON.stringify(playbackResult.headers),
-        debugInfo: JSON.stringify(playbackResult.debugInfo),
-      },
-    });
+    if (result.success) {
+      router.push({
+        pathname: '/player' as any,
+        params: {
+          playbackUrl: result.playbackUrl,
+          movieName: movie?.name || 'Video',
+          headers: JSON.stringify(result.headers),
+        },
+      });
+    }
   };
 
   if (!movie) {
@@ -364,9 +281,16 @@ export default function MovieDetailScreen() {
               </View>
               <Text style={styles.hubDialogTitle}>Media Hub Not Connected</Text>
               <Text style={styles.hubDialogMessage}>
-                Please connect to a {COMPANY_NAME} Media Hub to play content.
+                Please connect to a Media Hub router to play content.
               </Text>
-              
+              <View style={styles.hubDialogInfo}>
+                <Text style={styles.hubDialogInfoText}>
+                  Current Gateway: {gatewayIp || 'Unknown'}
+                </Text>
+                <Text style={styles.hubDialogInfoText}>
+                  Required Gateway: {HUB_GATEWAY_IP}
+                </Text>
+              </View>
               <TouchableOpacity
                 style={styles.hubDialogBtn}
                 onPress={() => setShowHubNotConnectedDialog(false)}
@@ -412,147 +336,6 @@ export default function MovieDetailScreen() {
         </View>
       </Modal>
 
-      {/* ═══════════════════════════════════════════════════════════════════
-          DEBUG DIALOG (shows validation progress)
-      ═══════════════════════════════════════════════════════════════════ */}
-      <Modal
-        transparent
-        visible={showDebugDialog}
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setShowDebugDialog(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalBackdrop}
-          activeOpacity={1}
-          onPress={() => !isCheckingRights && setShowDebugDialog(false)}
-        />
-        <View style={styles.modalCentered} pointerEvents="box-none">
-          <View style={styles.debugDialog}>
-            <View style={styles.debugHeader}>
-              <Ionicons name="play-circle" size={24} color="#FF4D6D" />
-              <Text style={styles.debugTitle}>Playback Validation</Text>
-              {!isCheckingRights && (
-                <TouchableOpacity onPress={() => setShowDebugDialog(false)}>
-                  <Ionicons name="close" size={24} color="#9CA3AF" />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <ScrollView style={styles.debugScrollView} showsVerticalScrollIndicator={false}>
-              <View style={styles.debugContent}>
-                {/* Rights Check Status */}
-                <View style={styles.debugSection}>
-                  <Text style={styles.debugSectionTitle}>get_download_right</Text>
-                  {isCheckingRights ? (
-                    <View style={styles.loadingBox}>
-                      <ActivityIndicator size="small" color="#FF4D6D" />
-                      <Text style={styles.loadingText}>Checking playback rights...</Text>
-                    </View>
-                  ) : rightsResult ? (
-                    <View style={[
-                      styles.rightsStatusBox,
-                      rightsResult.statusCode === STATUS_CODES.OK ? styles.rightsAllowed : styles.rightsDenied
-                    ]}>
-                      <Ionicons 
-                        name={rightsResult.statusCode === STATUS_CODES.OK ? "checkmark-circle" : "close-circle"} 
-                        size={24} 
-                        color={rightsResult.statusCode === STATUS_CODES.OK ? "#10B981" : "#EF4444"} 
-                      />
-                      <View style={styles.rightsTextContainer}>
-                        <Text style={[
-                          styles.rightsStatusTitle,
-                          rightsResult.statusCode === STATUS_CODES.OK ? styles.rightsAllowedText : styles.rightsDeniedText
-                        ]}>
-                          status.code = {rightsResult.statusCode}
-                        </Text>
-                        <Text style={styles.rightsStatusSubtitle}>
-                          {rightsResult.message}
-                        </Text>
-                      </View>
-                    </View>
-                  ) : null}
-                  
-                  {rightsResult && (
-                    <View style={[styles.debugInfoBox, { marginTop: 8 }]}>
-                      <View style={styles.debugInfoRow}>
-                        <Text style={styles.debugLabel}>Movie ID:</Text>
-                        <Text style={styles.debugValue}>{rightsResult.debugInfo.movieId}</Text>
-                      </View>
-                      <View style={styles.debugInfoRow}>
-                        <Text style={styles.debugLabel}>RandomKey:</Text>
-                        <Text style={[styles.debugValue, styles.debugValueSmall]}>
-                          {rightsResult.randomKey || 'Not received'}
-                        </Text>
-                      </View>
-                      <View style={styles.debugInfoRow}>
-                        <Text style={styles.debugLabel}>Hub URL:</Text>
-                        <Text style={[styles.debugValue, styles.debugValueSmall]} numberOfLines={1}>
-                          {rightsResult.debugInfo.requestUrl}
-                        </Text>
-                      </View>
-                    </View>
-                  )}
-                </View>
-
-                {/* URL Construction - Only show if rights granted */}
-                {rightsResult?.statusCode === STATUS_CODES.OK && playbackResult && (
-                  <View style={styles.debugSection}>
-                    <Text style={styles.debugSectionTitle}>Playback URL</Text>
-                    <View style={styles.debugInfoBox}>
-                      <View style={styles.debugInfoRow}>
-                        <Text style={styles.debugLabel}>fileName:</Text>
-                        <Text style={styles.debugValue}>{playbackResult.debugInfo.normalizedFileName || 'N/A'}</Text>
-                      </View>
-                      <View style={styles.debugInfoRow}>
-                        <Text style={styles.debugLabel}>BASE_URL:</Text>
-                        <Text style={[styles.debugValue, styles.debugValueSmall]} numberOfLines={1}>
-                          {playbackResult.debugInfo.baseUrlSelected}
-                        </Text>
-                      </View>
-                      <View style={styles.debugUrlSection}>
-                        <Text style={styles.debugLabel}>Final m3u8 URL:</Text>
-                        <Text style={styles.debugUrlValue} numberOfLines={3}>
-                          {playbackResult.debugInfo.finalUrl}
-                        </Text>
-                      </View>
-                      <View style={styles.debugUrlSection}>
-                        <Text style={styles.debugLabel}>Cookie:</Text>
-                        <Text style={[styles.debugUrlValue, { color: '#F59E0B' }]} numberOfLines={2}>
-                          {playbackResult.debugInfo.headersApplied.cookie || 'none'}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                )}
-              </View>
-            </ScrollView>
-
-            {!isCheckingRights && (
-              <View style={styles.dialogButtons}>
-                <TouchableOpacity
-                  style={styles.cancelBtn}
-                  onPress={() => setShowDebugDialog(false)}
-                >
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.playNowBtn,
-                    (!playbackResult?.success || rightsResult?.statusCode !== STATUS_CODES.OK) && styles.playNowBtnDisabled
-                  ]}
-                  onPress={navigateToPlayer}
-                  disabled={!playbackResult?.success || rightsResult?.statusCode !== STATUS_CODES.OK}
-                >
-                  <Ionicons name="play" size={20} color="#FFF" />
-                  <Text style={styles.playNowBtnText}>Play Now</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -824,173 +607,6 @@ const styles = StyleSheet.create({
   },
   errorDismissBtnText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  // Debug Dialog
-  debugDialog: {
-    width: '100%',
-    maxWidth: 380,
-    maxHeight: '85%',
-    backgroundColor: '#1A1A2E',
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 77, 109, 0.3)',
-  },
-  debugHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: 'rgba(255, 77, 109, 0.1)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  debugTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    flex: 1,
-    marginLeft: 12,
-  },
-  debugScrollView: {
-    maxHeight: 400,
-  },
-  debugContent: {
-    padding: 20,
-  },
-  debugSection: {
-    marginTop: 16,
-  },
-  debugSectionTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FF4D6D',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  debugInfoBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 12,
-    padding: 12,
-  },
-  debugInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  debugLabel: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  debugValue: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    fontFamily: 'monospace',
-    fontWeight: '600',
-    maxWidth: '60%',
-  },
-  debugValueSmall: {
-    fontSize: 10,
-  },
-  debugUrlSection: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  debugUrlValue: {
-    fontSize: 10,
-    color: '#6EE7B7',
-    fontFamily: 'monospace',
-    marginTop: 4,
-    lineHeight: 14,
-  },
-  loadingBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: 'rgba(255, 77, 109, 0.1)',
-    padding: 14,
-    borderRadius: 12,
-  },
-  loadingText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-  },
-  rightsStatusBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    gap: 10,
-  },
-  rightsAllowed: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-  },
-  rightsDenied: {
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-  },
-  rightsTextContainer: {
-    flex: 1,
-  },
-  rightsStatusTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  rightsAllowedText: {
-    color: '#10B981',
-  },
-  rightsDeniedText: {
-    color: '#EF4444',
-  },
-  rightsStatusSubtitle: {
-    fontSize: 11,
-    color: '#9CA3AF',
-    marginTop: 2,
-  },
-  dialogButtons: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  cancelBtn: {
-    flex: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  cancelBtnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#9CA3AF',
-  },
-  playNowBtn: {
-    flex: 1.5,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#FF4D6D',
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  playNowBtnDisabled: {
-    backgroundColor: '#4B5563',
-  },
-  playNowBtnText: {
-    fontSize: 15,
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
