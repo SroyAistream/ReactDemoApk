@@ -273,7 +273,7 @@ export default function PlayerScreen() {
             </View>
 
             {/* Bottom Bar - Debug Info */}
-            <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 10 }]}>
+            {/* <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 10 }]}>
               <View style={styles.debugRow}>
                 <Text style={styles.debugLabel}>URL:</Text>
                 <Text style={styles.debugUrl} numberOfLines={1}>
@@ -288,7 +288,7 @@ export default function PlayerScreen() {
                   </Text>
                 </View>
               )}
-            </View>
+            </View> */}
           </View>
         )}
       </TouchableOpacity>

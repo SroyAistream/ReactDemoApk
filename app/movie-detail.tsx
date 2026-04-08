@@ -109,7 +109,7 @@ export default function MovieDetailScreen() {
     
     // Show loading state
     setIsCheckingRights(true);
-    setShowDebugDialog(true);
+    // setShowDebugDialog(true);
 
     // Call get_download_right API
     console.log('[Play] Calling get_download_right API...');
@@ -136,22 +136,7 @@ export default function MovieDetailScreen() {
     console.log('[Play] Status code is 0 (OK) - Proceeding to URL construction');
     console.log('[Play] RandomKey received:', rights.randomKey);
 
-    // ====================================================
-    // STEP 3: BUILD PLAYBACK URL (ANDROID STYLE)
-    // ====================================================
     
-    // Build playback URL using PlaybackService
-    const result = await getPlaybackUrl(movie, isHubConnected);
-    setPlaybackResult(result);
-    
-    // Log all debug info
-    console.log('[Play] URL Construction complete');
-    console.log('[Play] fileName used:', result.debugInfo.normalizedFileName);
-    console.log('[Play] FINAL m3u8 URL:', result.debugInfo.finalUrl);
-    console.log('[Play] Headers to inject:', result.debugInfo.headersApplied);
-    console.log('====================================================');
-  };
-
   /**
    * Navigate to player with the built URL and headers
    */
@@ -177,6 +162,24 @@ export default function MovieDetailScreen() {
       },
     });
   };
+
+    // ====================================================
+    // STEP 3: BUILD PLAYBACK URL (ANDROID STYLE)
+    // ====================================================
+    
+    // Build playback URL using PlaybackService
+    const result = await getPlaybackUrl(movie, isHubConnected);
+    setPlaybackResult(result);
+    
+    // Log all debug info
+    console.log('[Play] URL Construction complete');
+    console.log('[Play] fileName used:', result.debugInfo.normalizedFileName);
+    console.log('[Play] FINAL m3u8 URL:', result.debugInfo.finalUrl);
+    console.log('[Play] Headers to inject:', result.debugInfo.headersApplied);
+    console.log('====================================================');
+    navigateToPlayer();
+  };
+
 
   if (!movie) {
     return (
