@@ -140,6 +140,25 @@ export default function MovieDetailScreen() {
   /**
    * Navigate to player with the built URL and headers
    */
+  
+
+    // ====================================================
+    // STEP 3: BUILD PLAYBACK URL (ANDROID STYLE)
+    // ====================================================
+    
+    // Build playback URL using PlaybackService
+    const result = await getPlaybackUrl(movie, isHubConnected);
+    setPlaybackResult(result);
+    
+    // Log all debug info
+    console.log('[Play] URL Construction complete');
+    console.log('[Play] fileName used:', result.debugInfo.normalizedFileName);
+    console.log('[Play] FINAL m3u8 URL:', result.debugInfo.finalUrl);
+    console.log('[Play] Headers to inject:', result.debugInfo.headersApplied);
+    console.log('====================================================');
+    navigateToPlayer();
+  };
+
   const navigateToPlayer = () => {
     if (!playbackResult?.success) return;
     
@@ -162,24 +181,6 @@ export default function MovieDetailScreen() {
       },
     });
   };
-
-    // ====================================================
-    // STEP 3: BUILD PLAYBACK URL (ANDROID STYLE)
-    // ====================================================
-    
-    // Build playback URL using PlaybackService
-    const result = await getPlaybackUrl(movie, isHubConnected);
-    setPlaybackResult(result);
-    
-    // Log all debug info
-    console.log('[Play] URL Construction complete');
-    console.log('[Play] fileName used:', result.debugInfo.normalizedFileName);
-    console.log('[Play] FINAL m3u8 URL:', result.debugInfo.finalUrl);
-    console.log('[Play] Headers to inject:', result.debugInfo.headersApplied);
-    console.log('====================================================');
-    navigateToPlayer();
-  };
-
 
   if (!movie) {
     return (
