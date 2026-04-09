@@ -11,7 +11,7 @@
 import * as SQLite from 'expo-sqlite';
 import { DB_NAME } from '../constants/api_constants';
 
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const DB_VERSION_KEY = '__db_version';
 
 class DatabaseHelper {
@@ -120,10 +120,27 @@ class DatabaseHelper {
       );
     `);
 
+    // downloads
+    await this.db.execAsync(`
+      CREATE TABLE IF NOT EXISTS downloads (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        movie_id TEXT UNIQUE NOT NULL,
+        name TEXT,
+        status TEXT DEFAULT 'pending',
+        progress REAL DEFAULT 0,
+        local_path TEXT,
+        movie_json TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // indexes
     await this.db.execAsync(`
       CREATE INDEX IF NOT EXISTS idx_movies_movie_id ON movies(movie_id);
       CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id);
+      CREATE INDEX IF NOT EXISTS idx_downloads_movie_id ON downloads(movie_id);
+      CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
     `);
   }
 
@@ -315,6 +332,67 @@ class DatabaseHelper {
     ) as any;
     if (!r) return null;
     return r.raw_json ? this._parseJson(r.raw_json, r) : r;
+  }
+
+  // ── Downloads ────────────────────────────────────────────────────────────────
+
+  async saveDownload(download: any): Promise<void> {
+    await this.ensureDB();
+    await this.db.runAsync(
+      `INSERT OR REPLACE INTO downloads
+       (movie_id, name, status, progress, local_path, movie_json, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+      String(download.movie_id),
+      download.name ?? '',
+      download.status ?? 'pending',
+      download.progress ?? 0,
+      download.local_path ?? null,
+      download.movie_json ?? null
+    );
+  }
+
+  async getDownloads(): Promise<any[]> {
+    if (!this.db) return [];
+    return await this.db.getAllAsync(
+      'SELECT * FROM downloads ORDER BY created_at DESC'
+    ) as any[];
+  }
+
+  async getDownloadByMovieId(movieId: string | number): Promise<any | null> {
+    if (!this.db) return null;
+    return await this.db.getFirstAsync(
+      'SELECT * FROM downloads WHERE movie_id = ? LIMIT 1',
+      String(movieId)
+    ) as any;
+  }
+
+  async getPendingDownloads(): Promise<any[]> {
+    if (!this.db) return [];
+    return await this.db.getAllAsync(
+      "SELECT * FROM downloads WHERE status = 'pending' ORDER BY created_at ASC"
+    ) as any[];
+  }
+
+  async updateDownloadStatus(
+    movieId: string | number,
+    status: string,
+    progress?: number,
+    localPath?: string
+  ): Promise<void> {
+    await this.ensureDB();
+    await this.db.runAsync(
+      `UPDATE downloads SET status = ?, progress = ?, local_path = COALESCE(?, local_path),
+       updated_at = CURRENT_TIMESTAMP WHERE movie_id = ?`,
+      status,
+      progress ?? 0,
+      localPath ?? null,
+      String(movieId)
+    );
+  }
+
+  async deleteDownload(movieId: string | number): Promise<void> {
+    await this.ensureDB();
+    await this.db.runAsync('DELETE FROM downloads WHERE movie_id = ?', String(movieId));
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Dimensions,
   Modal,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +24,8 @@ import {
 } from '../core/services/DownloadRightsService';
 
 import { COMPANY_NAME } from './constants/app_constants';
+import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
+import { getLocalPlaybackPath } from '../core/services/DownloadService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PREVIEW_HEIGHT = SCREEN_HEIGHT * 0.65;
@@ -49,8 +52,28 @@ export default function MovieDetailScreen() {
   const [playbackResult, setPlaybackResult] = useState<PlaybackResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Parse the movie object from params
+  // Parse the movie object from params (must come before download store usage)
   const movie = params.movie ? JSON.parse(params.movie as string) : null;
+
+  // Downloads store
+  const {
+    downloads,
+    loadDownloads,
+    queueDownload,
+    startDownload,
+    getDownloadByMovieId,
+  } = useDownloadsStore();
+
+  const movieId = movie ? (movie.movie_id ?? movie.movieId ?? movie.id) : null;
+  const downloadItem = movieId != null ? getDownloadByMovieId(movieId) : undefined;
+  const isDownloaded   = downloadItem?.status === 'completed';
+  const isDownloading  = downloadItem?.status === 'downloading';
+  const isPending      = downloadItem?.status === 'pending';
+  const downloadProgress = downloadItem?.progress ?? 0;
+
+  useEffect(() => {
+    loadDownloads();
+  }, []);
 
   /**
    * ====================================================
@@ -69,7 +92,29 @@ export default function MovieDetailScreen() {
     if (!movie) return;
 
     const movieId = movie.movie_id || movie.movieId || movie.id;
-    
+
+    // ====================================================
+    // LOCAL DOWNLOAD CHECK – play offline without hub
+    // ====================================================
+    try {
+      const localPath = await getLocalPlaybackPath(movieId);
+      if (localPath) {
+        console.log('[Play] Playing from local download:', localPath);
+        router.push({
+          pathname: '/player' as any,
+          params: {
+            playbackUrl: localPath,
+            movieName: movie.name || 'Video',
+            headers: JSON.stringify({}),
+            debugInfo: JSON.stringify({ movieId, isLocal: true }),
+          },
+        });
+        return;
+      }
+    } catch (e) {
+      console.log('[Play] Local path check skipped:', e);
+    }
+
     console.log('====================================================');
     console.log('[Play] STEP 1 — PLAY BUTTON CLICKED');
     console.log('[Play] DO NOT open player immediately - Start validation');
@@ -180,6 +225,28 @@ export default function MovieDetailScreen() {
         debugInfo: JSON.stringify(playbackResult.debugInfo),
       },
     });
+  };
+
+  // ====================================================
+  // DOWNLOAD BUTTON HANDLER
+  // ====================================================
+  const handleDownload = async () => {
+    if (!movie) return;
+
+    if (isHubConnected) {
+      // Hub connected → start download immediately
+      console.log('[Download] Hub connected – starting download immediately');
+      startDownload(movie, true);
+    } else {
+      // Not connected → save as pending for later
+      console.log('[Download] Hub not connected – queuing download for later');
+      await queueDownload(movie);
+      Alert.alert(
+        'Download Queued',
+        'This movie will be downloaded automatically the next time you connect to an AiStream Media Hub.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   if (!movie) {
@@ -302,6 +369,7 @@ export default function MovieDetailScreen() {
               )}
             </View>
 
+            <View style={styles.actionRow}>
             <TouchableOpacity
               style={styles.playButton}
               activeOpacity={0.85}
@@ -315,9 +383,53 @@ export default function MovieDetailScreen() {
                 end={{ x: 1, y: 0 }}
               >
                 <Ionicons name="play" size={28} color="#FFFFFF" />
-                <Text style={styles.playButtonText}>Play</Text>
+                <Text style={styles.playButtonText}>
+                  {isDownloaded ? 'Play' : 'Stream'}
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
+
+            {/* Download Button */}
+            <TouchableOpacity
+              style={[
+                styles.downloadButton,
+                isDownloaded && styles.downloadButtonDone,
+                (isDownloading || isPending) && styles.downloadButtonActive,
+              ]}
+              activeOpacity={0.85}
+              onPress={handleDownload}
+              disabled={isDownloading || isPending || isDownloaded}
+              data-testid="download-button"
+            >
+              {isDownloaded ? (
+                <>
+                  <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                  <Text style={[styles.downloadButtonText, { color: '#10B981' }]}>
+                    Downloaded
+                  </Text>
+                </>
+              ) : isDownloading ? (
+                <>
+                  <ActivityIndicator size="small" color="#FF4D6D" />
+                  <Text style={styles.downloadButtonText}>
+                    {Math.round(downloadProgress * 100)}%
+                  </Text>
+                </>
+              ) : isPending ? (
+                <>
+                  <Ionicons name="time-outline" size={20} color="#F59E0B" />
+                  <Text style={[styles.downloadButtonText, { color: '#F59E0B' }]}>
+                    Queued
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="download-outline" size={20} color="#FFFFFF" />
+                  <Text style={styles.downloadButtonText}>Download</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -657,22 +769,54 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     opacity: 0.9,
   },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 4,
+  },
   playButton: {
     borderRadius: 30,
     overflow: 'hidden',
-    alignSelf: 'flex-start',
+    flex: 1,
   },
   playButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 36,
+    paddingHorizontal: 24,
     gap: 10,
   },
   playButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  downloadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 30,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  downloadButtonDone: {
+    borderColor: '#10B981',
+    backgroundColor: 'rgba(16,185,129,0.12)',
+  },
+  downloadButtonActive: {
+    borderColor: 'rgba(255,77,109,0.5)',
+    backgroundColor: 'rgba(255,77,109,0.08)',
+  },
+  downloadButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#FFFFFF',
   },
   detailsSection: {
