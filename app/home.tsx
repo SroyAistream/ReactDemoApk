@@ -16,6 +16,7 @@ import { STORAGE_KEYS } from '../core/constants/api_constants';
 import { storageHelper } from '../core/utils/storage_helper';
 import { useMoviesStore } from '../features/movies/presentation/providers/movies_provider';
 import { MovieResponse } from '../features/movies/domain/entities/movie';
+import { useHubDetection } from '../core/hooks/useHubDetection';
 
 // ─────────────────────────────────────────────
 // Constants (match Android Java Config.java)
@@ -197,13 +198,17 @@ export default function HomeScreen() {
   const [sections, setSections] = useState<MovieSection[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // 1. Initialize the detection hook
+  const { isHubConnected } = useHubDetection();
+
   // Use the offline-first movies store
   const { movies, isLoading, isRefreshing, fetchMovies } = useMoviesStore();
 
   useEffect(() => {
     // Load movies on mount (cache-first, then background sync)
-    fetchMovies();
-  }, []);
+    // Passing isHubConnected ensures the database saves the correct poster URLs
+    fetchMovies(isHubConnected);
+  }, [isHubConnected]);
 
   // Categorize movies whenever they change
   useEffect(() => {
@@ -215,10 +220,13 @@ export default function HomeScreen() {
 
   // Pull-to-refresh handler
   const onRefresh = useCallback(() => {
+    // Note: We don't necessarily need to clear sections here if we want to 
+    // keep the old data visible until the refresh completes, but keeping 
+    // it matches your current UI clear-and-reload preference.
     setError(null);
     setSections([]);
-    fetchMovies(true); // forceRefresh = true
-  }, [fetchMovies]);
+    fetchMovies(isHubConnected,true); // forceRefresh = true
+  }, [fetchMovies,isHubConnected]);
 
   /**
    * Categorize movies following Android HomeAdapter behavior.

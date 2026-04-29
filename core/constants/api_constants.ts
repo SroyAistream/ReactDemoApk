@@ -47,7 +47,7 @@ export const API_ENDPOINTS = {
   GET_RECOMMENDATIONS: '/fag/movies/recommendation',
   
   // Account
-  GET_ACCOUNT: '/account',
+  GET_ACCOUNT: 'fag/account/profile',
 };
 
 // Storage Keys

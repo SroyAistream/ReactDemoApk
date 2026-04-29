@@ -5,7 +5,7 @@ export class ProfileLocalDataSource {
   /**
    * Save profile to local SQLite database.
    */
-  async saveProfile(profile: ProfileResponse): Promise<void> {
+  async saveProfile(profile: ProfileResponse,isHubConnected: boolean): Promise<void> {
     try {
       const row = {
         user_id: profile.user_id ?? null,

@@ -40,8 +40,9 @@ interface MoviesState {
   isRefreshing: boolean;
   isSyncing: boolean;
   error: string | null;
-
-  fetchMovies: (forceRefresh?: boolean) => Promise<void>;
+  // Add isHubConnected as a required parameter
+ fetchMovies: (isHubConnected: boolean, forceRefresh?: boolean) => Promise<void>;
+  // fetchMovies: (forceRefresh?: boolean) => Promise<void>;
   clearError: () => void;
   searchMovies: (query: string) => Promise<MovieResponse[]>;
 }
@@ -60,7 +61,7 @@ export const useMoviesStore = create<MoviesState>((set, get) => ({
   // ─────────────────────────────────────────────
   // MAIN FUNCTION
   // ─────────────────────────────────────────────
-  fetchMovies: async (forceRefresh = false) => {
+  fetchMovies: async (isHubConnected: boolean,forceRefresh = false) => {
     await ensureDb();
 
     // ─────────────────────────────────────────
@@ -70,19 +71,19 @@ export const useMoviesStore = create<MoviesState>((set, get) => ({
       set({ isRefreshing: true, error: null });
 
       try {
-        const fresh = await moviesRepository.syncFromApi();
+        const fresh = await moviesRepository.syncFromApi(isHubConnected);
 
-        if (fresh.length > 0) {
+       if (fresh.length > 0) {
           set({ movies: fresh });
-        } else {
-          console.warn('[MoviesStore] API returned empty on refresh');
         }
 
       } catch (err: any) {
-        console.log('[MoviesStore] Refresh failed:', err);
-        set({ error: err?.message ?? 'Refresh failed' });
+       console.log('[MoviesStore] Refresh failed:', err);
+       if (get().movies.length === 0) {
+          set({ error: err?.message ?? 'Refresh failed' });
+        }
       } finally {
-        set({ isRefreshing: false });
+       set({ isRefreshing: false });
       }
 
       return;
@@ -106,7 +107,7 @@ export const useMoviesStore = create<MoviesState>((set, get) => ({
         // ─────────────────────────────────────
         // STEP 2: BACKGROUND SYNC
         // ─────────────────────────────────────
-        triggerBackgroundSync(set, get);
+       triggerBackgroundSync(set, get, isHubConnected);
 
         return;
       }
@@ -121,7 +122,7 @@ export const useMoviesStore = create<MoviesState>((set, get) => ({
     set({ isLoading: true, error: null });
 
     try {
-      const fresh = await moviesRepository.syncFromApi();
+      const fresh = await moviesRepository.syncFromApi(isHubConnected);
 
       set({
         movies: fresh,
@@ -150,7 +151,7 @@ export const useMoviesStore = create<MoviesState>((set, get) => ({
 // ─────────────────────────────────────────────
 // BACKGROUND SYNC FUNCTION
 // ─────────────────────────────────────────────
-function triggerBackgroundSync(set: any, get: any) {
+function triggerBackgroundSync(set: any, get: any, isHubConnected: boolean) {
 
   if (syncPromise) return; // 🔥 prevent duplicate calls
 
@@ -158,17 +159,15 @@ function triggerBackgroundSync(set: any, get: any) {
 
   set({ isSyncing: true });
 
-  syncPromise = moviesRepository.syncFromApi()
+  syncPromise = moviesRepository.syncFromApi(isHubConnected)
     .then((fresh) => {
       if (fresh.length > 0) {
-        console.log(`[MoviesStore] Synced ${fresh.length} fresh movies`);
         set({ movies: fresh });
-      } else {
-        console.warn('[MoviesStore] API returned empty, keeping cached data');
       }
     })
     .catch((e) => {
-      console.log('[MoviesStore] Background sync failed:', e);
+      // Background fails silently, keeping UI clean
+      console.log('[MoviesStore] Background sync failed, keeping cache:', e);
     })
     .finally(() => {
       set({ isSyncing: false });

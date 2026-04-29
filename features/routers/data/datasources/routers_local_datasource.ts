@@ -5,7 +5,7 @@ export class RoutersLocalDataSource {
   /**
    * Save routers to local SQLite database.
    */
-  async saveRouters(routers: RouterResponse[]): Promise<void> {
+  async saveRouters(routers: RouterResponse[],isHubConnected: boolean): Promise<void> {
     try {
       const rows = routers.map((r) => ({
         id: r.id,

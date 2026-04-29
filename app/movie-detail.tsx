@@ -22,6 +22,7 @@ import {
   DownloadRightsResult, 
   STATUS_CODES 
 } from '../core/services/DownloadRightsService';
+import { getBaseUrl } from '../core/config/app_config';
 
 import { COMPANY_NAME } from './constants/app_constants';
 import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
@@ -290,6 +291,7 @@ export default function MovieDetailScreen() {
       params: {
         playbackUrl: playbackResult.playbackUrl,
         movieName: movie?.name || 'Video',
+        fileName:movie.quality_list[0].file_name,
         headers: JSON.stringify(playbackResult.headers),
         debugInfo: JSON.stringify(playbackResult.debugInfo),
       },
@@ -337,22 +339,52 @@ export default function MovieDetailScreen() {
   // Helper Functions
   // ─────────────────────────────────────────────
   
-  const getPreviewUrl = (): string | null => {
-    let previewPath: string | null = null;
+//   const getPreviewUrl = (): string | null => {
+//     let previewPath: string | null = null;
     
-    if (movie.preview && movie.preview.trim() !== '') {
-      previewPath = movie.preview;
-    } else if (movie.theatrical_poster && movie.theatrical_poster.trim() !== '') {
-      previewPath = movie.theatrical_poster;
-    } else if (movie.poster && movie.poster.trim() !== '') {
-      previewPath = movie.poster;
+//     if (movie.preview && movie.preview.trim() !== '') {
+//       previewPath = movie.preview;
+//     } else if (movie.theatrical_poster && movie.theatrical_poster.trim() !== '') {
+//       previewPath = movie.theatrical_poster;
+//     } else if (movie.poster && movie.poster.trim() !== '') {
+//       previewPath = movie.poster;
+//     }
+
+//     if (!previewPath) return null;
+// // ✅ FIX: Use the dynamic base URL based on Hub connection
+//     const dynamicBase = getBaseUrl(isHubConnected);
+//     const base = dynamicBase.endsWith('/') ? dynamicBase : dynamicBase + '/';
+//     const path = previewPath.startsWith('/') ? previewPath.slice(1) : previewPath;
+//     return base + path;
+//   };
+const getPreviewUrl = (): string | null => {
+    // 1. Gather the best available string from the movie object
+    const rawString = 
+      movie.preview_url || 
+      movie.preview || 
+      movie.poster_url || 
+      movie.theatrical_poster || 
+      movie.poster;
+      
+    if (!rawString) return null;
+
+    // 2. Ruthlessly strip ANY existing base URLs to get the pure relative path
+    let purePath = rawString
+      .replace('https://demo.aistream.tv:8833', '')
+      .replace('http://192.168.39.20:88', ''); // Catch both just in case
+
+    // Clean up any double or leading slashes
+    if (purePath.startsWith('/')) {
+      purePath = purePath.slice(1);
     }
 
-    if (!previewPath) return null;
+    // 3. Rebuild the URL using the real-time network state
+    const dynamicBase = getBaseUrl(isHubConnected);
+    const base = dynamicBase.endsWith('/') ? dynamicBase : dynamicBase + '/';
+    
+    const resolvedUrl = base + purePath;
 
-    const base = IMAGE_BASE_URL.endsWith('/') ? IMAGE_BASE_URL : IMAGE_BASE_URL + '/';
-    const path = previewPath.startsWith('/') ? previewPath.slice(1) : previewPath;
-    return base + path;
+    return resolvedUrl;
   };
 
   const formatDuration = (seconds?: number): string => {
@@ -364,6 +396,7 @@ export default function MovieDetailScreen() {
     if (hrs > 0) return `${hrs}h`;
     return `${mins}m`;
   };
+
 
   const getGenreList = (): string[] => {
     if (!movie.genres || movie.genres.length === 0) return [];

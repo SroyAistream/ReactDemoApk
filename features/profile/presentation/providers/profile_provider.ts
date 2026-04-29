@@ -37,7 +37,7 @@ interface ProfileState {
    * Renders cache instantly, then syncs API in background.
    * forceRefresh = true skips cache and shows spinner.
    */
-  fetchProfile: (forceRefresh?: boolean) => Promise<void>;
+  fetchProfile: (isHubConnected: boolean,forceRefresh?: boolean) => Promise<void>;
   clearError: () => void;
   clearProfile: () => void;
 }
@@ -49,15 +49,27 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   isSyncing: false,
   error: null,
 
-  fetchProfile: async (forceRefresh = false) => {
-    await ensureDb();
+  fetchProfile: async (isHubConnected: boolean,forceRefresh = false) => {
+    await databaseHelper.init(); // Gatekeeper
 
     if (forceRefresh) {
-      // Pull-to-refresh: show spinner, block on API
+     // Pull-to-refresh: show spinner, try to hit API
       set({ isRefreshing: true, error: null });
-      const fresh = await profileRepository.syncFromApi();
-      const display = fresh ?? await profileRepository.getCachedProfile();
-      set({ profile: display, isRefreshing: false, isSyncing: false });
+      try {
+        // ✅ FIX: Pass network state to repository
+        const fresh = await profileRepository.syncFromApi(isHubConnected);
+        if (fresh) {
+          set({ profile: fresh });
+        }
+      } catch (err: any) {
+        console.warn('[ProfileStore] Refresh failed, keeping cache:', err);
+        // ✅ FIX: "Swallow the Error" - Only set error if we have NO cached profile to show
+        if (!get().profile) {
+          set({ error: err?.message ?? 'Failed to refresh profile' });
+        }
+      } finally {
+        set({ isRefreshing: false, isSyncing: false });
+      }
       return;
     }
 
@@ -70,20 +82,26 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       // Step 2: Background sync (non-blocking)
       if (!get().isSyncing) {
         set({ isSyncing: true });
-        profileRepository.syncFromApi().then((fresh) => {
+        profileRepository.syncFromApi(isHubConnected).then((fresh) => {
           if (fresh) {
             console.log('[ProfileStore] Background sync: fresh profile received');
-            set({ profile: fresh, isSyncing: false });
-          } else {
+            set({ profile: fresh});
+          } 
+          // else {
+          //   set({ isSyncing: false });
+          // }
+        }).catch((err) => {
+            // Background fails silently, keeping UI completely clean
+            console.warn('[ProfileStore] Background sync failed, keeping cache:', err);
+          }).finally(() => {
             set({ isSyncing: false });
-          }
-        }).catch(() => set({ isSyncing: false }));
+          });
       }
     } else {
       // No cache — must wait for API
       set({ isLoading: true, error: null });
       try {
-        const fresh = await profileRepository.syncFromApi();
+        const fresh = await profileRepository.syncFromApi(isHubConnected  );
         set({ profile: fresh, isLoading: false, error: null });
       } catch (err: any) {
         set({ isLoading: false, error: err?.message ?? 'Failed to load profile' });
