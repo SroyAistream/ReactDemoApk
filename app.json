@@ -7,7 +7,7 @@
     "icon": "./assets/images/icon.png",
     "scheme": "aistream",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aistream.mediahub",
@@ -31,9 +31,13 @@
       "permissions": [
         "ACCESS_WIFI_STATE",
         "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
         "CHANGE_WIFI_STATE",
         "INTERNET",
-        "ACCESS_NETWORK_STATE"
+        "ACCESS_NETWORK_STATE",
+        "READ_MEDIA_VIDEO",
+        "READ_MEDIA_IMAGES",
+        "FOREGROUND_SERVICE"
       ]
     },
     "web": {
@@ -51,7 +55,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#000"
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "experiments": {
       "typedRoutes": true
