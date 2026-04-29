@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../core/constants/api_constants';
 import { useProfileStore } from '../features/profile/presentation/providers/profile_provider';
-
+import { useHubDetection } from '../core/hooks/useHubDetection';
 // Profile cache key
 const PROFILE_CACHE_KEY = 'cached_profile';
 
@@ -31,14 +31,16 @@ interface MenuItem {
 export default function AccountScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+// 2. Initialize the Hub Detection hook
+  const { isHubConnected } = useHubDetection();
 
   // Use the offline-first profile store
   const { profile, isLoading, fetchProfile, clearProfile } = useProfileStore();
 
-  // Load profile data on screen mount
+  // 3. Make the initial load reactive to network changes
   useEffect(() => {
-    fetchProfile();
-  }, []);
+    fetchProfile(isHubConnected);
+  }, [isHubConnected]);
 
   // Build menu items using profile data
   const getMenuItems = (): MenuItem[] => {
@@ -123,9 +125,9 @@ export default function AccountScreen() {
     clearProfile();
     router.replace('/');
   };
-
+// 4. Update the refresh handler to pass the network state
   const handleRefresh = () => {
-    fetchProfile(true); // forceRefresh
+    fetchProfile(isHubConnected,true); // forceRefresh
   };
 
   // Render menu item

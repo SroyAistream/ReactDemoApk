@@ -23,13 +23,13 @@ export class MoviesRepositoryImpl {
    * Fetch from API, save to local DB, return fresh list.
    * Never throws — returns [] on error so cached data is preserved.
    */
-  async syncFromApi(): Promise<MovieResponse[]> {
+  async syncFromApi(isHubConnected: boolean): Promise<MovieResponse[]> {
     try {
-      console.log('[MoviesRepo] Syncing movies from API...');
+      console.log(`[MoviesRepo] Syncing movies from API... (Hub: ${isHubConnected})`);
       const fresh = await moviesRemoteDataSource.getMovies();
       if (fresh.length > 0) {
-        await moviesLocalDataSource.saveMovies(fresh);
-        console.log(`[MoviesRepo] Saved ${fresh.length} movies to cache`);
+       await moviesLocalDataSource.saveMovies(fresh, isHubConnected);
+       console.log(`[MoviesRepo] Saved ${fresh.length} movies to cache`);
       }
       return fresh;
     } catch (error) {
@@ -42,12 +42,12 @@ export class MoviesRepositoryImpl {
    * Legacy method: cache-first with blocking API fetch if no cache.
    * Kept for backward compatibility.
    */
-  async getMovies(forceRefresh = false): Promise<MovieResponse[]> {
+  async getMovies(isHubConnected: boolean,forceRefresh = false): Promise<MovieResponse[]> {
     if (!forceRefresh) {
       const cached = await this.getCachedMovies();
       if (cached.length > 0) return cached;
     }
-    const fresh = await this.syncFromApi();
+    const fresh = await this.syncFromApi(isHubConnected);
     if (fresh.length > 0) return fresh;
     return this.getCachedMovies();
   }

@@ -32,6 +32,7 @@ import * as Location from 'expo-location';
 import { getWifiInfo, WifiInfo } from '../core/utils/wifi_helper';
 import { useRoutersStore } from '../features/routers/presentation/providers/routers_provider';
 import { Router } from '../features/routers/domain/entities/router';
+import { useHubDetection } from '../core/hooks/useHubDetection';
 
 // ─── Storage keys ────────────────────────────────────────────────────────────
 const LOCATION_CACHE_KEY = 'cached_user_location';
@@ -93,6 +94,8 @@ export default function HotspotScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+    // 2. Initialize the Hub Detection hook
+  const { isHubConnected } = useHubDetection();
   // Use the offline-first routers store
   const { routers: storeRouters, isLoading, isRefreshing, fetchRouters } = useRoutersStore();
 
@@ -103,9 +106,11 @@ export default function HotspotScreen() {
   const [error, setError] = useState<string | null>(null);
   const [statusText, setStatusText] = useState('Initializing...');
 
+
+// 3. Make the initial load reactive
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [isHubConnected]); // Re-run if network switches
 
   // Process routers when they change from the store
   useEffect(() => {
@@ -122,7 +127,7 @@ export default function HotspotScreen() {
     try {
       // 1. Fetch routers via offline-first store
       setStatusText('Fetching hubs...');
-      fetchRouters();
+      fetchRouters(isHubConnected);
 
       // 2. Read WiFi info (BSSID + SSID)
       setStatusText('Checking WiFi...');
@@ -180,7 +185,7 @@ export default function HotspotScreen() {
 
   const onRefresh = useCallback(() => {
     AsyncStorage.removeItem(LOCATION_CACHE_KEY).then(() => {
-      fetchRouters(true); // forceRefresh
+      fetchRouters(isHubConnected, true); // forceRefresh
       loadAll();
     });
   }, [fetchRouters]);

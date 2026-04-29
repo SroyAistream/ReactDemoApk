@@ -35,33 +35,35 @@ export class AuthRemoteDataSource {
 
       // Handle real API response format: {status: {...}, data: {...}}
       if (response.status && response.data) {
-        // Real demo.aistream.tv API format
         console.log('API Status Code:', response.status.code);
         console.log('API Status Message:', response.status.message);
         
-        // Check if status code is 0 (success)
         if (response.status.code !== 0) {
           throw new Error(response.status.message || 'Login failed');
         }
 
-        // Extract token from data object
-        const token = response.data.token;
-        const userId = response.data.user_id;
+        // 1. Provide a fallback ID for offline media hub connections
+        const userId = response.data.user_id || 'offline_guest_id';
         
-        console.log('Extracted token:', token?.substring(0, 50) + '...');
-        console.log('Extracted user_id:', userId);
+        // 2. Check for both singular and plural token expiry keys
+        const rawExpiry = response.data.token_expiry_time || response.data.token_expiry_times || 0;
+        
+        // Safely parse the date to avoid Invalid Date errors
+        let parsedExpiry = new Date().toISOString();
+        if (rawExpiry > 0) {
+           parsedExpiry = new Date(rawExpiry).toISOString();
+        }
 
-        // Transform to expected format
         return {
           user_id: userId,
           password: response.data.password || '',
-          token: token,
-          token_expiry_times: new Date(response.data.token_expiry_time).toISOString(),
+          token: response.data.token || '',
+          token_expiry_times: parsedExpiry,
           plan: {
             name: response.data.plan_name || 'Free Plan',
-            expiry: new Date(response.data.token_expiry_time).toISOString(),
+            expiry: parsedExpiry,
           },
-        };
+        }
       }
 
       // Fallback for mock API format

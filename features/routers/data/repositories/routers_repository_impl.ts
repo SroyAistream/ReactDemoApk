@@ -22,12 +22,12 @@ export class RoutersRepositoryImpl {
    * Fetch from API, save to local DB, return fresh list.
    * Never throws — returns [] on error so cached data is preserved.
    */
-  async syncFromApi(): Promise<Router[]> {
+  async syncFromApi(isHubConnected: boolean): Promise<Router[]> {
     try {
-      console.log('[RoutersRepo] Syncing routers from API...');
+      console.log(`[RoutersRepo] Syncing routers from API...(Hub: ${isHubConnected})`);
       const fresh = await routersRemoteDataSource.getRouters();
       if (fresh.length > 0) {
-        await routersLocalDataSource.saveRouters(fresh);
+        await routersLocalDataSource.saveRouters(fresh,isHubConnected);
         console.log(`[RoutersRepo] Saved ${fresh.length} routers to cache`);
       }
       // Return mapped entities
@@ -41,12 +41,12 @@ export class RoutersRepositoryImpl {
   /**
    * Legacy method: cache-first with blocking API fetch if no cache.
    */
-  async getRouters(forceRefresh = false): Promise<Router[]> {
+  async getRouters(isHubConnected: boolean,forceRefresh = false): Promise<Router[]> {
     if (!forceRefresh) {
       const cached = await this.getCachedRouters();
       if (cached.length > 0) return cached;
     }
-    const fresh = await this.syncFromApi();
+    const fresh = await this.syncFromApi(isHubConnected);
     if (fresh.length > 0) return fresh;
     return this.getCachedRouters();
   }

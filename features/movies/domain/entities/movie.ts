@@ -61,6 +61,7 @@ export interface MovieResponse {
   genres?: GenreItem[];       // includes id + name
   directors?: Array<{ name: string }>;
   actors?: Array<{ name: string }>;
+  quality_list?: Array<{ file_name: string }>
   /**
    * Categorization fields (Android HomeAdapter logic)
    * content_type: 1 = Movie, 4 = Short Video

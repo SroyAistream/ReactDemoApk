@@ -10,12 +10,27 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Network from 'expo-network';
 import { useAuthStore } from '../features/auth/presentation/providers/auth_provider';
 import { databaseHelper } from '../core/database/database_helper';
+import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
+
+/** Quick hub detection: checks if device IP is in the 192.168.39.x subnet */
+async function isHubReachable(): Promise<boolean> {
+  try {
+    const ip = await Network.getIpAddressAsync();
+    if (!ip) return false;
+    const parts = ip.split('.');
+    return parts.length === 4 && `${parts[0]}.${parts[1]}.${parts[2]}` === '192.168.39';
+  } catch {
+    return false;
+  }
+}
 
 export default function SplashScreen() {
   const router = useRouter();
   const { guestLogin, checkLogin, isLoading: authLoading } = useAuthStore();
+  const { processPendingDownloads } = useDownloadsStore();
 
   // 'init'    – DB initializing + checking existing session
   // 'ready'   – show "Continue as Guest" button
@@ -37,6 +52,13 @@ export default function SplashScreen() {
       // If already logged in → go straight to home
       const loggedIn = await checkLogin();
       if (loggedIn) {
+        // Fire-and-forget: process any pending downloads in background
+        isHubReachable().then(hubConnected => {
+          if (hubConnected) {
+            console.log('[Splash] Hub connected – processing pending downloads');
+            processPendingDownloads(true);
+          }
+        });
         router.replace('/home');
         return;
       }
@@ -55,6 +77,10 @@ export default function SplashScreen() {
     try {
       const success = await guestLogin();
       if (success) {
+        // Also check downloads for freshly-logged-in session
+        isHubReachable().then(hubConnected => {
+          if (hubConnected) processPendingDownloads(true);
+        });
         router.replace('/home');
       } else {
         setError('Login failed. Please try again.');

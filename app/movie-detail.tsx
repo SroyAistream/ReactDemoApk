@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Dimensions,
   Modal,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,8 +22,17 @@ import {
   DownloadRightsResult, 
   STATUS_CODES 
 } from '../core/services/DownloadRightsService';
+import { getBaseUrl } from '../core/config/app_config';
 
 import { COMPANY_NAME } from './constants/app_constants';
+import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
+import { getLocalPlaybackPath } from '../core/services/DownloadService';
+import { databaseHelper } from '@/core/database/database_helper.native';
+import { ToastAndroid, Platform } from 'react-native';
+import * as Haptics from 'expo-haptics';
+
+
+
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PREVIEW_HEIGHT = SCREEN_HEIGHT * 0.65;
@@ -48,9 +58,52 @@ export default function MovieDetailScreen() {
   const [rightsResult, setRightsResult] = useState<DownloadRightsResult | null>(null);
   const [playbackResult, setPlaybackResult] = useState<PlaybackResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [prevStatus, setPrevStatus] = useState<string | null>(null);
 
-  // Parse the movie object from params
+  // Parse the movie object from params (must come before download store usage)
   const movie = params.movie ? JSON.parse(params.movie as string) : null;
+
+  // Downloads store
+  const {
+    downloads,
+    loadDownloads,
+    queueDownload,
+    startDownload,
+    getDownloadByMovieId,
+  } = useDownloadsStore();
+
+  const movieId = movie ? (movie.movie_id ?? movie.movieId ?? movie.id) : null;
+  const downloadItem = movieId != null ? getDownloadByMovieId(movieId) : undefined;
+  const isDownloaded   = downloadItem?.status === 'completed';
+  const isDownloading  = downloadItem?.status === 'downloading';
+  const isPending      = downloadItem?.status === 'pending';
+  const downloadProgress = downloadItem?.progress ?? 0;
+
+  useEffect(() => {
+    loadDownloads();
+  }, []);
+
+  useEffect(() => {
+  if (!downloadItem) return;
+
+  // Detect transition → completed
+  if (prevStatus === 'downloading' && downloadItem.status === 'completed') {
+    
+    const message = 'Download completed';
+
+    if (Platform.OS === 'android') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+    } else {
+      Alert.alert('Success', message);
+    }
+
+    console.log('[Download] Completed toast shown');
+  }
+
+  setPrevStatus(downloadItem.status);
+
+}, [downloadItem?.status]);
 
   /**
    * ====================================================
@@ -69,7 +122,29 @@ export default function MovieDetailScreen() {
     if (!movie) return;
 
     const movieId = movie.movie_id || movie.movieId || movie.id;
-    
+
+    // ====================================================
+    // LOCAL DOWNLOAD CHECK – play offline without hub
+    // ====================================================
+    try {
+      const localPath = await getLocalPlaybackPath(movieId);
+      if (localPath) {
+        console.log('[Play] Playing from local download:', localPath);
+        router.push({
+          pathname: '/player' as any,
+          params: {
+            playbackUrl: localPath,
+            movieName: movie.name || 'Video',
+            headers: JSON.stringify({}),
+            debugInfo: JSON.stringify({ movieId, isLocal: true }),
+          },
+        });
+        return;
+      }
+    } catch (e) {
+      console.log('[Play] Local path check skipped:', e);
+    }
+
     console.log('====================================================');
     console.log('[Play] STEP 1 — PLAY BUTTON CLICKED');
     console.log('[Play] DO NOT open player immediately - Start validation');
@@ -148,7 +223,7 @@ export default function MovieDetailScreen() {
     
     // Build playback URL using PlaybackService
     const result = await getPlaybackUrl(movie, isHubConnected);
-    setPlaybackResult(result);
+    // setPlaybackResult(result);
     
     // Log all debug info
     console.log('[Play] URL Construction complete');
@@ -157,7 +232,45 @@ export default function MovieDetailScreen() {
     console.log('[Play] Headers to inject:', result.debugInfo.headersApplied);
     console.log('====================================================');
     navigateToPlayer();
+      startBackgroundDownload(result);
+    if (result.success) {
+  router.push({
+    pathname: '/player' as any,
+    params: {
+      playbackUrl: result.playbackUrl,
+      movieName: movie?.name || 'Video',
+      headers: JSON.stringify(result.headers),
+      debugInfo: JSON.stringify(result.debugInfo),
+    },
+  });
+    
+
+   
+}
+   
   };
+
+  const startBackgroundDownload = async (result: PlaybackResult) => {
+
+        console.log('====================================================');
+    console.log('[Play] Downloading content');
+    console.log('====================================================');
+  if (!playbackResult?.success || !movie) return;
+
+  try {
+    console.log('[BG Download] Starting background download...');
+
+    const { playbackUrl, headers } = playbackResult;
+
+    // Call your download service
+    await startDownload(movie, true); // true = hub connected
+
+    console.log('[BG Download] Download triggered');
+
+  } catch (err) {
+    console.log('[BG Download] Failed:', err);
+  }
+};
 
   const navigateToPlayer = () => {
     if (!playbackResult?.success) return;
@@ -169,6 +282,8 @@ export default function MovieDetailScreen() {
     console.log('[Play] Final m3u8 URL:', playbackResult.playbackUrl);
     console.log('[Play] Headers attached:', JSON.stringify(playbackResult.headers, null, 2));
     console.log('====================================================');
+
+    handleDownload();
     
     // Navigate to player with URL and headers
     router.push({
@@ -176,10 +291,34 @@ export default function MovieDetailScreen() {
       params: {
         playbackUrl: playbackResult.playbackUrl,
         movieName: movie?.name || 'Video',
+        fileName:movie.quality_list[0].file_name,
         headers: JSON.stringify(playbackResult.headers),
         debugInfo: JSON.stringify(playbackResult.debugInfo),
       },
     });
+  };
+
+  // ====================================================
+  // DOWNLOAD BUTTON HANDLER
+  // ====================================================
+  const handleDownload = async () => {
+    if (!movie) return;
+
+    if (isHubConnected) {
+      // Hub connected → start download immediately
+      console.log('[Download] Hub connected – starting download immediately');
+      await databaseHelper.init();
+      startDownload(movie, true);
+    } else {
+      // Not connected → save as pending for later
+      console.log('[Download] Hub not connected – queuing download for later');
+      await queueDownload(movie);
+      Alert.alert(
+        'Download Queued',
+        'This movie will be downloaded automatically the next time you connect to an AiStream Media Hub.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   if (!movie) {
@@ -200,22 +339,52 @@ export default function MovieDetailScreen() {
   // Helper Functions
   // ─────────────────────────────────────────────
   
-  const getPreviewUrl = (): string | null => {
-    let previewPath: string | null = null;
+//   const getPreviewUrl = (): string | null => {
+//     let previewPath: string | null = null;
     
-    if (movie.preview && movie.preview.trim() !== '') {
-      previewPath = movie.preview;
-    } else if (movie.theatrical_poster && movie.theatrical_poster.trim() !== '') {
-      previewPath = movie.theatrical_poster;
-    } else if (movie.poster && movie.poster.trim() !== '') {
-      previewPath = movie.poster;
+//     if (movie.preview && movie.preview.trim() !== '') {
+//       previewPath = movie.preview;
+//     } else if (movie.theatrical_poster && movie.theatrical_poster.trim() !== '') {
+//       previewPath = movie.theatrical_poster;
+//     } else if (movie.poster && movie.poster.trim() !== '') {
+//       previewPath = movie.poster;
+//     }
+
+//     if (!previewPath) return null;
+// // ✅ FIX: Use the dynamic base URL based on Hub connection
+//     const dynamicBase = getBaseUrl(isHubConnected);
+//     const base = dynamicBase.endsWith('/') ? dynamicBase : dynamicBase + '/';
+//     const path = previewPath.startsWith('/') ? previewPath.slice(1) : previewPath;
+//     return base + path;
+//   };
+const getPreviewUrl = (): string | null => {
+    // 1. Gather the best available string from the movie object
+    const rawString = 
+      movie.preview_url || 
+      movie.preview || 
+      movie.poster_url || 
+      movie.theatrical_poster || 
+      movie.poster;
+      
+    if (!rawString) return null;
+
+    // 2. Ruthlessly strip ANY existing base URLs to get the pure relative path
+    let purePath = rawString
+      .replace('https://demo.aistream.tv:8833', '')
+      .replace('http://192.168.39.20:88', ''); // Catch both just in case
+
+    // Clean up any double or leading slashes
+    if (purePath.startsWith('/')) {
+      purePath = purePath.slice(1);
     }
 
-    if (!previewPath) return null;
+    // 3. Rebuild the URL using the real-time network state
+    const dynamicBase = getBaseUrl(isHubConnected);
+    const base = dynamicBase.endsWith('/') ? dynamicBase : dynamicBase + '/';
+    
+    const resolvedUrl = base + purePath;
 
-    const base = IMAGE_BASE_URL.endsWith('/') ? IMAGE_BASE_URL : IMAGE_BASE_URL + '/';
-    const path = previewPath.startsWith('/') ? previewPath.slice(1) : previewPath;
-    return base + path;
+    return resolvedUrl;
   };
 
   const formatDuration = (seconds?: number): string => {
@@ -227,6 +396,7 @@ export default function MovieDetailScreen() {
     if (hrs > 0) return `${hrs}h`;
     return `${mins}m`;
   };
+
 
   const getGenreList = (): string[] => {
     if (!movie.genres || movie.genres.length === 0) return [];
@@ -302,6 +472,7 @@ export default function MovieDetailScreen() {
               )}
             </View>
 
+            <View style={styles.actionRow}>
             <TouchableOpacity
               style={styles.playButton}
               activeOpacity={0.85}
@@ -315,9 +486,53 @@ export default function MovieDetailScreen() {
                 end={{ x: 1, y: 0 }}
               >
                 <Ionicons name="play" size={28} color="#FFFFFF" />
-                <Text style={styles.playButtonText}>Play</Text>
+                <Text style={styles.playButtonText}>
+                  {isDownloaded ? 'Play' : 'Stream'}
+                </Text>
               </LinearGradient>
             </TouchableOpacity>
+
+            {/* Download Button */}
+            <TouchableOpacity
+              style={[
+                styles.downloadButton,
+                isDownloaded && styles.downloadButtonDone,
+                (isDownloading || isPending) && styles.downloadButtonActive,
+              ]}
+              activeOpacity={0.85}
+              onPress={handleDownload}
+              disabled={isDownloading || isPending || isDownloaded}
+              data-testid="download-button"
+            >
+              {isDownloaded ? (
+                <>
+                  <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                  <Text style={[styles.downloadButtonText, { color: '#10B981' }]}>
+                    Downloaded
+                  </Text>
+                </>
+              ) : isDownloading ? (
+                <>
+                  <ActivityIndicator size="small" color="#FF4D6D" />
+                  <Text style={styles.downloadButtonText}>
+                    {Math.round(downloadProgress * 100)}%
+                  </Text>
+                </>
+              ) : isPending ? (
+                <>
+                  <Ionicons name="time-outline" size={20} color="#F59E0B" />
+                  <Text style={[styles.downloadButtonText, { color: '#F59E0B' }]}>
+                    Queued
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="download-outline" size={20} color="#FFFFFF" />
+                  <Text style={styles.downloadButtonText}>Download</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -657,22 +872,54 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     opacity: 0.9,
   },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 4,
+  },
   playButton: {
     borderRadius: 30,
     overflow: 'hidden',
-    alignSelf: 'flex-start',
+    flex: 1,
   },
   playButtonGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
-    paddingHorizontal: 36,
+    paddingHorizontal: 24,
     gap: 10,
   },
   playButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  downloadButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 30,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.4)',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  downloadButtonDone: {
+    borderColor: '#10B981',
+    backgroundColor: 'rgba(16,185,129,0.12)',
+  },
+  downloadButtonActive: {
+    borderColor: 'rgba(255,77,109,0.5)',
+    backgroundColor: 'rgba(255,77,109,0.08)',
+  },
+  downloadButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#FFFFFF',
   },
   detailsSection: {

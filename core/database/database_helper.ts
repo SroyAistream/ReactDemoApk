@@ -75,6 +75,34 @@ class DatabaseHelper {
     console.log('Web platform - returning null (profile will be fetched from API)');
     return null;
   }
+
+  // ── Downloads (stub – actual impl in .native.ts / .web.ts) ──────────────
+
+  async saveDownload(_download: any) {
+    console.log('Platform stub – saveDownload skipped');
+    return Promise.resolve();
+  }
+
+  async getDownloads(): Promise<any[]> {
+    return [];
+  }
+
+  async getDownloadByMovieId(_movieId: string | number): Promise<any | null> {
+    return null;
+  }
+
+  async getPendingDownloads(): Promise<any[]> {
+    return [];
+  }
+
+  async updateDownloadStatus(
+    _movieId: string | number,
+    _status: string,
+    _progress?: number,
+    _localPath?: string
+  ): Promise<void> {}
+
+  async deleteDownload(_movieId: string | number): Promise<void> {}
 }
 
 export const databaseHelper = new DatabaseHelper();

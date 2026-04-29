@@ -1,8 +1,7 @@
 import { apiClient } from '../../../../core/network/api_client';
-import { STORAGE_KEYS } from '../../../../core/constants/api_constants';
+import { STORAGE_KEYS,API_ENDPOINTS } from '../../../../core/constants/api_constants';
 import { ProfileResponse } from '../../domain/entities/profile';
 import { storageHelper } from '../../../../core/utils/storage_helper';
-
 /**
  * Builds the Authentication header using stored Bearer token.
  */
@@ -18,7 +17,7 @@ export class ProfileRemoteDataSource {
   /**
    * Fetches profile from /fag/account/profile.
    */
-  async getProfile(): Promise<ProfileResponse | null> {
+ async getProfile(isHubConnected: boolean): Promise<ProfileResponse | null> {
     try {
       const headers = await getAuthHeaders();
       if (!headers.Authentication) {
@@ -26,9 +25,17 @@ export class ProfileRemoteDataSource {
         return null;
       }
 
-      console.log('[ProfileRemote] Fetching profile...');
+      console.log(`[ProfileRemote] Fetching profile... (Hub: ${isHubConnected})`);
 
-      const response = await apiClient.get<any>('/fag/account/profile', { headers });
+      // ✅ Get the dynamic base URL (Cloud vs Hub)
+      // const dynamicBaseUrl = getBaseUrl(isHubConnected);
+ console.log(`[ProfileRemote] Fetching profile from API... (url: ${API_ENDPOINTS})`);
+      // ✅ Override the baseURL for this specific request
+      // const response = await apiClient.get<any>('/fag/account/profile', { 
+      //   headers,
+      //   baseURL: API_ENDPOINTS 
+      // });
+      const response =  await apiClient.get<any>(API_ENDPOINTS.GET_ACCOUNT, { headers })
 
       // Handle {status, data: {...}} wrapper
       if (response?.data) {

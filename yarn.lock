@@ -3593,6 +3593,11 @@ expo-device@^8.0.10:
   dependencies:
     ua-parser-js "^0.7.33"
 
+expo-file-system@^55.0.16:
+  version "55.0.16"
+  resolved "https://registry.npmjs.org/expo-file-system/-/expo-file-system-55.0.16.tgz"
+  integrity sha512-EetQ/zVFK07Vmz4Yke0fvoES4xVwScTdd0PMoLekuMX7puE4op75pNnEdh1M0AeWzkqLrBoZIaU2ynSrKN5VZg==
+
 expo-file-system@~19.0.21:
   version "19.0.21"
   resolved "https://registry.npmjs.org/expo-file-system/-/expo-file-system-19.0.21.tgz"
@@ -5892,6 +5897,11 @@ react-native-screens@~4.16.0:
     react-freeze "^1.0.0"
     react-native-is-edge-to-edge "^1.2.1"
     warn-once "^0.1.0"
+
+react-native-toast-message@^2.3.3:
+  version "2.3.3"
+  resolved "https://registry.npmjs.org/react-native-toast-message/-/react-native-toast-message-2.3.3.tgz"
+  integrity sha512-4IIUHwUPvKHu4gjD0Vj2aGQzqPATiblL1ey8tOqsxOWRPGGu52iIbL8M/mCz4uyqecvPdIcMY38AfwRuUADfQQ==
 
 react-native-video@^6.19.0:
   version "6.19.1"

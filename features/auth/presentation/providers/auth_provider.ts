@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { authRepository } from '../../data/repositories/auth_repository_impl';
 import { deviceHelper } from '../../../../core/utils/device_helper';
 import { AuthResponse } from '../../domain/entities/user';
+import { databaseHelper } from '@/core/database/database_helper.native';
 
 interface AuthState {
   user: AuthResponse | null;
@@ -9,9 +10,8 @@ interface AuthState {
   error: string | null;
   isAuthenticated: boolean;
 
-  guestLogin: () => Promise<boolean>;
-  checkLogin: () => Promise<boolean>;
-  logout: () => Promise<void>;
+  guestLogin: () => Promise<AuthResponse>;
+  checkLogin: () => Promise<boolean>;  logout: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -21,7 +21,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   error: null,
   isAuthenticated: false,
 
-  guestLogin: async () => {
+  async guestLogin(): Promise<AuthResponse> {
     set({ isLoading: true, error: null });
     try {
       const deviceInfo = await deviceHelper.getDeviceInfo();
@@ -32,6 +32,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       console.log('Device model:', deviceInfo.model);
       
       const response = await authRepository.guestLogin(deviceInfo);
+      const return_response = true;
 
       // Save user data locally
       await authRepository.saveUserLocally(response, deviceId);
@@ -44,15 +45,23 @@ export const useAuthStore = create<AuthState>((set) => ({
       });
 
       console.log('Guest login successful');
-      return true;
+      return response;
     } catch (error: any) {
-      console.error('Guest login failed:', error);
-      set({
-        isLoading: false,
-        error: error.message || 'Login failed. Please try again.',
-        isAuthenticated: false,
-      });
-      return false;
+      console.log('[AuthRepo] API failed');
+
+    await databaseHelper.init();
+    const deviceId = 'SOFLIX_37D5D77C668941608AA5D324EA29FBFC'
+
+    const existingUser = await databaseHelper.getUser(deviceId);
+    console.log('existing user',existingUser);
+
+    if (existingUser) {
+      console.log('offline fallback')
+      return existingUser; // ✅ offline fallback
+    }
+
+    // ❌ NO DB → signal UI to show popup
+    throw new Error('NO_INTERNET_LOGIN_REQUIRED');
     }
   },
 
