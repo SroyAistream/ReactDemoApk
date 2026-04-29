@@ -68,6 +68,7 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
   // ── Start immediate download (hub connected) ───────────────────────────────
 
   startDownload: async (movie: any, isHubConnected: boolean) => {
+    await ensureDb(databaseHelper);
     const movieId = String(movie?.movie_id ?? movie?.movieId ?? movie?.id);
 
     const existing = get().downloads.find(d => d.movie_id === movieId);

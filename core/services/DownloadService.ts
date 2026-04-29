@@ -27,7 +27,7 @@ import { databaseHelper } from '../database/database_helper';
 import { storageHelper } from '../utils/storage_helper';
 import { STORAGE_KEYS } from '../constants/api_constants';
 import { RandomKeyManager } from './RandomKeyManager';
-
+import * as FileSystemLegacy from 'expo-file-system/legacy';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface DownloadProgress {
@@ -46,16 +46,20 @@ const DOWNLOAD_SUBDIR = 'aistream_downloads';
 
 let _FS: any = null;
 
+// function getFS(): any | null {
+//   if (Platform.OS === 'web') return null;
+//   if (!_FS) {
+//     try {
+//       _FS = require('expo-file-system');
+//     } catch {
+//       return null;
+//     }
+//   }
+//   return _FS;
+// }
 function getFS(): any | null {
   if (Platform.OS === 'web') return null;
-  if (!_FS) {
-    try {
-      _FS = require('expo-file-system');
-    } catch {
-      return null;
-    }
-  }
-  return _FS;
+  return FileSystemLegacy; // ✅ ALWAYS use legacy
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -110,9 +114,9 @@ function parsePlaylist(
 
 async function ensureDir(FS: any, movieId: string | number): Promise<string> {
   const dir = `${FS.documentDirectory}${DOWNLOAD_SUBDIR}/${String(movieId)}/`;
-  const info = await FS.getInfoAsync(dir);
+  const info = await FileSystemLegacy.getInfoAsync(dir);
   if (!info.exists) {
-    await FS.makeDirectoryAsync(dir, { intermediates: true });
+    await FileSystemLegacy.makeDirectoryAsync(dir, { intermediates: true });
   }
   return dir;
 }
@@ -201,7 +205,7 @@ export async function downloadMovie(
       const localPath = movieDir + segName;
 
       try {
-        const result = await FS.downloadAsync(segUrl, localPath, { headers });
+        const result = await FileSystemLegacy.downloadAsync(segUrl, localPath, { headers });
         if (result.status === 200) {
           downloadedNames.push(segName);
         } else {
@@ -262,7 +266,7 @@ export async function getLocalPlaybackPath(movieId: string | number): Promise<st
     if (download?.status === 'completed' && download?.local_path) {
       const FS = getFS();
       if (!FS) return null;
-      const info = await FS.getInfoAsync(download.local_path);
+      const info = await FileSystemLegacy.getInfoAsync(download.local_path);
       if (info.exists) return download.local_path;
       // File was deleted externally – reset status
       await databaseHelper.updateDownloadStatus(movieId, 'failed', 0);
@@ -283,7 +287,7 @@ export async function deleteLocalDownload(movieId: string | number): Promise<voi
     const download = await databaseHelper.getDownloadByMovieId(movieId);
     if (download?.local_path) {
       const dir = download.local_path.substring(0, download.local_path.lastIndexOf('/') + 1);
-      const info = await FS.getInfoAsync(dir);
+      const info = await FileSystemLegacy.getInfoAsync(dir);
       if (info.exists) await FS.deleteAsync(dir, { idempotent: true });
     }
   } catch (err) {

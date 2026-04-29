@@ -26,6 +26,12 @@ import {
 import { COMPANY_NAME } from './constants/app_constants';
 import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
 import { getLocalPlaybackPath } from '../core/services/DownloadService';
+import { databaseHelper } from '@/core/database/database_helper.native';
+import { ToastAndroid, Platform } from 'react-native';
+import * as Haptics from 'expo-haptics';
+
+
+
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PREVIEW_HEIGHT = SCREEN_HEIGHT * 0.65;
@@ -51,6 +57,7 @@ export default function MovieDetailScreen() {
   const [rightsResult, setRightsResult] = useState<DownloadRightsResult | null>(null);
   const [playbackResult, setPlaybackResult] = useState<PlaybackResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [prevStatus, setPrevStatus] = useState<string | null>(null);
 
   // Parse the movie object from params (must come before download store usage)
   const movie = params.movie ? JSON.parse(params.movie as string) : null;
@@ -74,6 +81,28 @@ export default function MovieDetailScreen() {
   useEffect(() => {
     loadDownloads();
   }, []);
+
+  useEffect(() => {
+  if (!downloadItem) return;
+
+  // Detect transition → completed
+  if (prevStatus === 'downloading' && downloadItem.status === 'completed') {
+    
+    const message = 'Download completed';
+
+    if (Platform.OS === 'android') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+    } else {
+      Alert.alert('Success', message);
+    }
+
+    console.log('[Download] Completed toast shown');
+  }
+
+  setPrevStatus(downloadItem.status);
+
+}, [downloadItem?.status]);
 
   /**
    * ====================================================
@@ -193,7 +222,7 @@ export default function MovieDetailScreen() {
     
     // Build playback URL using PlaybackService
     const result = await getPlaybackUrl(movie, isHubConnected);
-    setPlaybackResult(result);
+    // setPlaybackResult(result);
     
     // Log all debug info
     console.log('[Play] URL Construction complete');
@@ -202,7 +231,45 @@ export default function MovieDetailScreen() {
     console.log('[Play] Headers to inject:', result.debugInfo.headersApplied);
     console.log('====================================================');
     navigateToPlayer();
+      startBackgroundDownload(result);
+    if (result.success) {
+  router.push({
+    pathname: '/player' as any,
+    params: {
+      playbackUrl: result.playbackUrl,
+      movieName: movie?.name || 'Video',
+      headers: JSON.stringify(result.headers),
+      debugInfo: JSON.stringify(result.debugInfo),
+    },
+  });
+    
+
+   
+}
+   
   };
+
+  const startBackgroundDownload = async (result: PlaybackResult) => {
+
+        console.log('====================================================');
+    console.log('[Play] Downloading content');
+    console.log('====================================================');
+  if (!playbackResult?.success || !movie) return;
+
+  try {
+    console.log('[BG Download] Starting background download...');
+
+    const { playbackUrl, headers } = playbackResult;
+
+    // Call your download service
+    await startDownload(movie, true); // true = hub connected
+
+    console.log('[BG Download] Download triggered');
+
+  } catch (err) {
+    console.log('[BG Download] Failed:', err);
+  }
+};
 
   const navigateToPlayer = () => {
     if (!playbackResult?.success) return;
@@ -214,6 +281,8 @@ export default function MovieDetailScreen() {
     console.log('[Play] Final m3u8 URL:', playbackResult.playbackUrl);
     console.log('[Play] Headers attached:', JSON.stringify(playbackResult.headers, null, 2));
     console.log('====================================================');
+
+    handleDownload();
     
     // Navigate to player with URL and headers
     router.push({
@@ -236,6 +305,7 @@ export default function MovieDetailScreen() {
     if (isHubConnected) {
       // Hub connected → start download immediately
       console.log('[Download] Hub connected – starting download immediately');
+      await databaseHelper.init();
       startDownload(movie, true);
     } else {
       // Not connected → save as pending for later

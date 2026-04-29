@@ -1,92 +1,140 @@
 /**
- * movies_provider.ts — Offline-first Zustand store for movies.
+ * movies_provider.ts — Android-equivalent offline-first Zustand store
  *
- * Pattern:
- *   1. Load cached data from SQLite immediately → render UI
- *   2. Trigger background API sync → update store on success
- *   3. On API failure: keep cached data, never clear UI
+ * Behavior:
+ *   1. Load DB instantly → render UI
+ *   2. Always try API in background
+ *   3. Never block UI
+ *   4. Never clear UI on API failure
+ *   5. Prevent duplicate API calls
  */
+
 import { create } from 'zustand';
 import { moviesRepository } from '../../data/repositories/movies_repository_impl';
 import { databaseHelper } from '../../../../core/database/database_helper';
 import { MovieResponse } from '../../domain/entities/movie';
 
-let dbInitialized = false;
+// ─────────────────────────────────────────────
+// DB INIT (SAFE SINGLETON)
+// ─────────────────────────────────────────────
+let dbInitPromise: Promise<void> | null = null;
 
 async function ensureDb() {
-  if (!dbInitialized) {
-    try {
-      await databaseHelper.init();
-      dbInitialized = true;
-    } catch (e) {
-      console.warn('[MoviesStore] DB init failed (web?):', e);
-      dbInitialized = true; // Mark as done to avoid retrying on every call
-    }
+  if (!dbInitPromise) {
+    dbInitPromise = databaseHelper.init();
   }
+  return dbInitPromise;
 }
 
+// ─────────────────────────────────────────────
+// SYNC LOCK (PREVENT DUPLICATE API CALLS)
+// ─────────────────────────────────────────────
+let syncPromise: Promise<void> | null = null;
+
+// ─────────────────────────────────────────────
+// STORE TYPE
+// ─────────────────────────────────────────────
 interface MoviesState {
   movies: MovieResponse[];
   isLoading: boolean;
   isRefreshing: boolean;
-  isSyncing: boolean;     // background sync in progress
+  isSyncing: boolean;
   error: string | null;
 
-  /**
-   * Primary entry point.
-   * Renders cache instantly, then syncs API in background.
-   * forceRefresh = true skips cache and shows spinner.
-   */
   fetchMovies: (forceRefresh?: boolean) => Promise<void>;
   clearError: () => void;
   searchMovies: (query: string) => Promise<MovieResponse[]>;
 }
 
+// ─────────────────────────────────────────────
+// STORE
+// ─────────────────────────────────────────────
 export const useMoviesStore = create<MoviesState>((set, get) => ({
+
   movies: [],
   isLoading: false,
   isRefreshing: false,
   isSyncing: false,
   error: null,
 
+  // ─────────────────────────────────────────────
+  // MAIN FUNCTION
+  // ─────────────────────────────────────────────
   fetchMovies: async (forceRefresh = false) => {
     await ensureDb();
 
+    // ─────────────────────────────────────────
+    // FORCE REFRESH (PULL TO REFRESH)
+    // ─────────────────────────────────────────
     if (forceRefresh) {
-      // Pull-to-refresh: show spinner, block on API
       set({ isRefreshing: true, error: null });
-      const fresh = await moviesRepository.syncFromApi();
-      const display = fresh.length > 0 ? fresh : await moviesRepository.getCachedMovies();
-      set({ movies: display, isRefreshing: false, isSyncing: false });
+
+      try {
+        const fresh = await moviesRepository.syncFromApi();
+
+        if (fresh.length > 0) {
+          set({ movies: fresh });
+        } else {
+          console.warn('[MoviesStore] API returned empty on refresh');
+        }
+
+      } catch (err: any) {
+        console.log('[MoviesStore] Refresh failed:', err);
+        set({ error: err?.message ?? 'Refresh failed' });
+      } finally {
+        set({ isRefreshing: false });
+      }
+
       return;
     }
 
-    // Step 1: Load cache immediately
-    const cached = await moviesRepository.getCachedMovies();
-    if (cached.length > 0) {
-      console.log(`[MoviesStore] Serving ${cached.length} cached movies instantly`);
-      set({ movies: cached, isLoading: false, error: null });
-      // Step 2: Background sync (non-blocking)
-      if (!get().isSyncing) {
-        set({ isSyncing: true });
-        moviesRepository.syncFromApi().then((fresh) => {
-          if (fresh.length > 0) {
-            console.log(`[MoviesStore] Background sync: ${fresh.length} fresh movies`);
-            set({ movies: fresh, isSyncing: false });
-          } else {
-            set({ isSyncing: false });
-          }
-        }).catch(() => set({ isSyncing: false }));
+    // ─────────────────────────────────────────
+    // STEP 1: LOAD CACHE (INSTANT UI)
+    // ─────────────────────────────────────────
+    try {
+      const cached = await moviesRepository.getCachedMovies();
+
+      if (cached.length > 0) {
+        console.log(`[MoviesStore] Loaded ${cached.length} cached movies`);
+
+        set({
+          movies: cached,
+          isLoading: false,
+          error: null
+        });
+
+        // ─────────────────────────────────────
+        // STEP 2: BACKGROUND SYNC
+        // ─────────────────────────────────────
+        triggerBackgroundSync(set, get);
+
+        return;
       }
-    } else {
-      // No cache — must wait for API
-      set({ isLoading: true, error: null });
-      try {
-        const fresh = await moviesRepository.syncFromApi();
-        set({ movies: fresh, isLoading: false, error: null });
-      } catch (err: any) {
-        set({ isLoading: false, error: err?.message ?? 'Failed to load movies' });
-      }
+
+    } catch (e) {
+      console.log('[MoviesStore] Cache load failed:', e);
+    }
+
+    // ─────────────────────────────────────────
+    // STEP 3: NO CACHE → LOAD FROM API
+    // ─────────────────────────────────────────
+    set({ isLoading: true, error: null });
+
+    try {
+      const fresh = await moviesRepository.syncFromApi();
+
+      set({
+        movies: fresh,
+        isLoading: false
+      });
+
+    } catch (err: any) {
+      console.log('[MoviesStore] Initial API load failed:', err);
+
+      set({
+        isLoading: false,
+        error: err?.message ?? 'Failed to load movies'
+      });
     }
   },
 
@@ -96,4 +144,34 @@ export const useMoviesStore = create<MoviesState>((set, get) => ({
     await ensureDb();
     return moviesRepository.searchMovies(query);
   },
+
 }));
+
+// ─────────────────────────────────────────────
+// BACKGROUND SYNC FUNCTION
+// ─────────────────────────────────────────────
+function triggerBackgroundSync(set: any, get: any) {
+
+  if (syncPromise) return; // 🔥 prevent duplicate calls
+
+  console.log('[MoviesStore] Starting background sync...');
+
+  set({ isSyncing: true });
+
+  syncPromise = moviesRepository.syncFromApi()
+    .then((fresh) => {
+      if (fresh.length > 0) {
+        console.log(`[MoviesStore] Synced ${fresh.length} fresh movies`);
+        set({ movies: fresh });
+      } else {
+        console.warn('[MoviesStore] API returned empty, keeping cached data');
+      }
+    })
+    .catch((e) => {
+      console.log('[MoviesStore] Background sync failed:', e);
+    })
+    .finally(() => {
+      set({ isSyncing: false });
+      syncPromise = null;
+    });
+}
