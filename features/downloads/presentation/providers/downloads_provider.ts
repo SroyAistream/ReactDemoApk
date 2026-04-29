@@ -1,13 +1,8 @@
 /**
  * downloads_provider.ts
  *
- * Zustand store for managing content downloads.
- *
- * States:
- *   pending     – queued but hub not available yet
- *   downloading – actively downloading
- *   completed   – local m3u8 + ts files available
- *   failed      – last attempt failed
+ * Fixed: Removed redundant local init logic and synced with 
+ * the public databaseHelper Gatekeeper pattern.
  */
 
 import { create } from 'zustand';
@@ -40,77 +35,95 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
 
   loadDownloads: async () => {
     try {
+      // Use the helper's gatekeeper to ensure readiness
+      await databaseHelper.ensureDB();
       const all = await databaseHelper.getDownloads();
       set({ downloads: all });
     } catch (e) {
-      console.error('[DownloadsStore] loadDownloads:', e);
+      console.error('[DownloadsStore] loadDownloads error:', e);
     }
   },
 
   // ── Queue (no hub available) ───────────────────────────────────────────────
 
   queueDownload: async (movie: any) => {
-    const movieId = String(movie?.movie_id ?? movie?.movieId ?? movie?.id);
-    const existing = get().downloads.find(d => d.movie_id === movieId);
-    // Don't overwrite an active/completed download
-    if (existing?.status === 'completed' || existing?.status === 'downloading') return;
+    try {
+      await databaseHelper.ensureDB();
+      const movieId = String(movie?.movie_id ?? movie?.movieId ?? movie?.id);
+      const existing = get().downloads.find(d => d.movie_id === movieId);
+      
+      if (existing?.status === 'completed' || existing?.status === 'downloading') return;
 
-    await databaseHelper.saveDownload({
-      movie_id: movieId,
-      name: movie?.name ?? 'Unknown',
-      status: 'pending',
-      progress: 0,
-      movie_json: JSON.stringify(movie),
-    });
-    await get().loadDownloads();
+      await databaseHelper.saveDownload({
+        movie_id: movieId,
+        name: movie?.name ?? 'Unknown',
+        status: 'pending',
+        progress: 0,
+        movie_json: JSON.stringify(movie),
+      });
+      await get().loadDownloads();
+    } catch (e) {
+      console.error('[DownloadsStore] queueDownload error:', e);
+    }
   },
 
   // ── Start immediate download (hub connected) ───────────────────────────────
 
   startDownload: async (movie: any, isHubConnected: boolean) => {
-    await ensureDb(databaseHelper);
-    const movieId = String(movie?.movie_id ?? movie?.movieId ?? movie?.id);
+    try {
+      // Fix: Strictly await the global Gatekeeper
+      await databaseHelper.ensureDB();
+      
+      const movieId = String(movie?.movie_id ?? movie?.movieId ?? movie?.id);
 
-    const existing = get().downloads.find(d => d.movie_id === movieId);
-    if (existing?.status === 'downloading' || existing?.status === 'completed') return;
+      const existing = get().downloads.find(d => d.movie_id === movieId);
+      if (existing?.status === 'downloading' || existing?.status === 'completed') return;
 
-    // Persist 'downloading' state immediately
-    await databaseHelper.saveDownload({
-      movie_id: movieId,
-      name: movie?.name ?? 'Unknown',
-      status: 'downloading',
-      progress: 0,
-      movie_json: JSON.stringify(movie),
-    });
-    await get().loadDownloads();
+      // Persist 'downloading' state immediately
+      await databaseHelper.saveDownload({
+        movie_id: movieId,
+        name: movie?.name ?? 'Unknown',
+        status: 'downloading',
+        progress: 0,
+        movie_json: JSON.stringify(movie),
+      });
+      await get().loadDownloads();
 
-    // Fire-and-forget — progress updates arrive via callback
-    downloadMovie(movie, isHubConnected, (progress) => {
-      set(state => ({
-        downloads: state.downloads.map(d =>
-          d.movie_id === movieId
-            ? { ...d, status: progress.status as DownloadStatus, progress: progress.progress }
-            : d
-        ),
-      }));
-    })
+      // Fire-and-forget — progress updates arrive via callback
+      downloadMovie(movie, isHubConnected, (progress) => {
+        set(state => ({
+          downloads: state.downloads.map(d =>
+            d.movie_id === movieId
+              ? { 
+                  ...d, 
+                  status: progress.status as DownloadStatus, 
+                  progress: progress.progress,
+                  local_path: progress.localPath || d.local_path
+                }
+              : d
+          ),
+        }));
+      })
       .then(() => get().loadDownloads())
-      .catch(() => get().loadDownloads());
+      .catch((err) => {
+        console.error(`[DownloadsStore] Download failed for ${movieId}:`, err);
+        get().loadDownloads();
+      });
+    } catch (e) {
+      console.error('[DownloadsStore] startDownload error:', e);
+    }
   },
 
-  // ── Process all pending downloads (called on hub connect / app launch) ─────
-
+  // ... (rest of the store remains the same)
+  
   processPendingDownloads: async (isHubConnected: boolean) => {
-    if (!isHubConnected) {
-      console.log('[DownloadsStore] Hub not connected – skipping pending downloads');
-      return;
-    }
+    if (!isHubConnected) return;
     if (get().isProcessingPending) return;
 
     set({ isProcessingPending: true });
     try {
+      await databaseHelper.ensureDB();
       const pending = await databaseHelper.getPendingDownloads();
-      console.log(`[DownloadsStore] Processing ${pending.length} pending download(s)`);
       for (const item of pending) {
         if (!item.movie_json) continue;
         try {
@@ -127,18 +140,19 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
     }
   },
 
-  // ── Queries ────────────────────────────────────────────────────────────────
-
   getDownloadByMovieId: (movieId: string | number) =>
     get().downloads.find(d => d.movie_id === String(movieId)),
 
   getLocalPath: (movieId: string | number) => getLocalPlaybackPath(movieId),
 
-  // ── Delete ─────────────────────────────────────────────────────────────────
-
   removeDownload: async (movieId: string | number) => {
-    await deleteLocalDownload(movieId);
-    await databaseHelper.deleteDownload(movieId);
-    await get().loadDownloads();
+    try {
+      await databaseHelper.ensureDB();
+      await deleteLocalDownload(movieId);
+      await databaseHelper.deleteDownload(movieId);
+      await get().loadDownloads();
+    } catch (e) {
+      console.error('[DownloadsStore] removeDownload error:', e);
+    }
   },
 }));

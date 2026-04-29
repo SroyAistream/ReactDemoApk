@@ -3,12 +3,34 @@
  * SQLite is not supported on web, so this uses AsyncStorage as a fallback
  * or simply returns empty results for database operations.
  */
+import * as SQLite from 'expo-sqlite';
+
 
 class DatabaseHelper {
+    private db: SQLite.SQLiteDatabase | null = null;
+  
   async init() {
     console.log('Running on web - SQLite disabled, using AsyncStorage for persistence');
     // On web, we rely on AsyncStorage which is already used for auth tokens
     return Promise.resolve();
+  }
+
+  /**
+   * The Gatekeeper: Ensures db is not null before any query runs.
+   * CHANGED TO PUBLIC so stores can use it.
+   */
+  public async ensureDB() { // <--- Changed from private to public
+    await this.init();
+    if (!this.db) {
+      throw new Error('[DB] Native database reference is null');
+    }
+  }
+
+  /**
+   * Alias for case-sensitivity safety.
+   */
+  public async ensureDb() {
+    return await this.ensureDB();
   }
 
   // User operations - web uses AsyncStorage instead
@@ -104,5 +126,7 @@ class DatabaseHelper {
 
   async deleteDownload(_movieId: string | number): Promise<void> {}
 }
+
+
 
 export const databaseHelper = new DatabaseHelper();

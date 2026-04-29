@@ -52,6 +52,10 @@ class DatabaseHelper {
       throw new Error('[DB] Native database reference is null');
     }
   }
+  // ADD THIS ALIAS to prevent ReferenceErrors from typos
+  private async ensureDb() {
+    return await this.ensureDB();
+  }
 
   private async createTables() {
     // Note: ensureDB is called by init(), so we can use this.db! safely here
