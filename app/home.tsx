@@ -18,7 +18,8 @@ import { useMoviesStore } from '../features/movies/presentation/providers/movies
 import { MovieResponse } from '../features/movies/domain/entities/movie';
 import { useHubDetection } from '../core/hooks/useHubDetection';
 import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
-
+import { useProfileStore } from '../features/profile/presentation/providers/profile_provider';
+import { useRoutersStore } from '../features/routers/presentation/providers/routers_provider';
 
 // ─────────────────────────────────────────────
 // Constants (match Android Java Config.java)
@@ -199,6 +200,8 @@ const MovieCardItem = memo(function MovieCardItem({
 
 
 
+
+
 export default function HomeScreen() {
   const router = useRouter();
   const [sections, setSections] = useState<MovieSection[]>([]);
@@ -210,11 +213,37 @@ export default function HomeScreen() {
 
   // Use the offline-first movies store
   const { movies, isLoading, isRefreshing, fetchMovies } = useMoviesStore();
+  const {fetchProfile } = useProfileStore();
+      const { fetchRouters } = useRoutersStore();
+
+  const initializeData = async () => {
+  try {
+    // If not on Hub (meaning on Internet), we force a refresh to overwrite cache
+    // If on Hub, we don't force a refresh, so it just hits 'Step 1: Load Cache'
+    const shouldForceUpdate = !isHubConnected;
+
+    console.log(`[Index] Syncing. Hub: ${isHubConnected}, ForceUpdate: ${shouldForceUpdate}`);
+
+    
+    
+    if (!isHubConnected) {
+      // Only sync these if we actually have an internet connection
+      // Sequential calls to prevent SQLite transaction collisions
+    await fetchMovies(isHubConnected, shouldForceUpdate);
+      await fetchRouters(isHubConnected); 
+      await fetchProfile(isHubConnected, true);
+    }
+    
+    console.log('[Index] Sequential sync completed.');
+  } catch (err) {
+    console.error("[Index] Initialization failed:", err);
+  }
+};
 
   useEffect(() => {
     // Load movies on mount (cache-first, then background sync)
     // Passing isHubConnected ensures the database saves the correct poster URLs
-    fetchMovies(isHubConnected);
+   initializeData()
   }, [isHubConnected]);
 
   // Categorize movies whenever they change
