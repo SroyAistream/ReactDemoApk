@@ -17,6 +17,8 @@ import { storageHelper } from '../core/utils/storage_helper';
 import { useMoviesStore } from '../features/movies/presentation/providers/movies_provider';
 import { MovieResponse } from '../features/movies/domain/entities/movie';
 import { useHubDetection } from '../core/hooks/useHubDetection';
+import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
+
 
 // ─────────────────────────────────────────────
 // Constants (match Android Java Config.java)
@@ -111,6 +113,8 @@ interface MovieSection {
 // ─────────────────────────────────────────────────────────────────────────────
 const PLACEHOLDER_BLURHASH = 'L02}lN0000%g0000WB9Z9Zt79F-p';
 
+
+
 interface MovieCardItemProps {
   movie: Movie;
   posterUrl: string | null;
@@ -193,10 +197,13 @@ const MovieCardItem = memo(function MovieCardItem({
   );
 });
 
+
+
 export default function HomeScreen() {
   const router = useRouter();
   const [sections, setSections] = useState<MovieSection[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const { processPendingDownloads } = useDownloadsStore();
 
   // 1. Initialize the detection hook
   const { isHubConnected } = useHubDetection();
@@ -218,13 +225,27 @@ export default function HomeScreen() {
     }
   }, [movies]);
 
+  useEffect(() => {
+      if (isHubConnected) {
+        // Fire-and-forget: process any pending downloads in background
+        console.log('[Auto-Sync] Media Hub detected! Starting pending downloads...');
+        processPendingDownloads(true);
+      }
+    }, [isHubConnected]);
+  
+
+  // This function adds the button to your navigation bar
+  const navigateToDownloads = () => {
+    router.push('/DownloadsScreen'); // Assumes your file is app/downloads.tsx
+  };
+
   // Pull-to-refresh handler
   const onRefresh = useCallback(() => {
     // Note: We don't necessarily need to clear sections here if we want to 
     // keep the old data visible until the refresh completes, but keeping 
     // it matches your current UI clear-and-reload preference.
     setError(null);
-    setSections([]);
+    // setSections([]);
     fetchMovies(isHubConnected,true); // forceRefresh = true
   }, [fetchMovies,isHubConnected]);
 
@@ -433,6 +454,7 @@ export default function HomeScreen() {
 
     return (
       <View key={`${sectionId}-${genreGroup.genreName}`} style={styles.genreGroup}>
+        
         <View style={styles.genreHeader}>
           <Text style={styles.genreTitle}>{genreGroup.genreName}</Text>
           {genreGroup.movies.length > 4 && (
@@ -535,6 +557,13 @@ export default function HomeScreen() {
             <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/account')}>
               <Ionicons name="person-circle-outline" size={22} color="#FFFFFF" />
             </TouchableOpacity>
+            {/* <View style={styles.header1}> */}
+        {/* <Text style={styles.title}>AiStream</Text> */}
+        <TouchableOpacity onPress={navigateToDownloads} style={styles.downloadIcon}>
+          <Ionicons name="download-outline" size={26} color="#FFF" />
+          {/* Optional: Add a small red dot if there are active downloads */}
+        </TouchableOpacity>
+      {/* </View> */}
             <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
               <Ionicons name="log-out-outline" size={22} color="#FF4D6D" />
             </TouchableOpacity>
@@ -778,5 +807,21 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 40,
+  },
+  header1: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#000',
+  },
+  title: {
+    color: '#FFF',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  downloadIcon: {
+    padding: 4,
   },
 });

@@ -15,6 +15,8 @@ import { useAuthStore } from '../features/auth/presentation/providers/auth_provi
 import { databaseHelper } from '../core/database/database_helper';
 import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
 import { useHubDetection } from '../core/hooks/useHubDetection';
+import { useProfileStore } from '../features/profile/presentation/providers/profile_provider';
+import { useRoutersStore } from '../features/routers/presentation/providers/routers_provider';
 
 /** Quick hub detection: checks if device IP is in the 192.168.39.x subnet */
 async function isHubReachable(): Promise<boolean> {
@@ -41,17 +43,23 @@ export default function SplashScreen() {
 
   const { isHubConnected } = useHubDetection();
 
+    const {fetchProfile } = useProfileStore();
+    const { fetchRouters } = useRoutersStore();
+    
+
+  
+
   useEffect(() => {
     initializeApp();
   }, []);
 
-  useEffect(() => {
-    if (isHubConnected) {
-      // Fire-and-forget: process any pending downloads in background
-      console.log('[Auto-Sync] Media Hub detected! Starting pending downloads...');
-      processPendingDownloads(true);
-    }
-  }, [isHubConnected]);
+  // useEffect(() => {
+  //   if (isHubConnected) {
+  //     // Fire-and-forget: process any pending downloads in background
+  //     console.log('[Auto-Sync] Media Hub detected! Starting pending downloads...');
+  //     processPendingDownloads(true);
+  //   }
+  // }, [isHubConnected]);
 
   const initializeApp = async () => {
     try {
@@ -71,6 +79,8 @@ export default function SplashScreen() {
         //   }
         // });
         router.replace('/home');
+        fetchProfile(isHubConnected,true);
+        fetchRouters(isHubConnected);
         return;
       }
 
