@@ -46,7 +46,7 @@ class DatabaseHelper {
   /**
    * The Gatekeeper: Ensures db is not null before any query runs.
    */
-  private async ensureDB() {
+  public async ensureDB() {
     await this.init();
     if (!this.db) {
       throw new Error('[DB] Native database reference is null');
@@ -396,7 +396,7 @@ class DatabaseHelper {
     )) as any[];
   }
 
-  async updateDownloadStatus(
+ public async updateDownloadStatus(
     movieId: string | number,
     status: string,
     progress?: number,
@@ -417,6 +417,23 @@ class DatabaseHelper {
     await this.ensureDB();
     await this.db!.runAsync('DELETE FROM downloads WHERE movie_id = ?', String(movieId));
   }
+
+//   public async updateDownloadStatus(
+//   movieId: string | number,
+//   status: string,
+//   progress?: number,
+//   localPath?: string
+// ): Promise<void> {
+//   await this.ensureDB();
+//   await this.db!.runAsync(
+//     `UPDATE downloads SET status = ?, progress = ?, local_path = COALESCE(?, local_path),
+//      updated_at = CURRENT_TIMESTAMP WHERE movie_id = ?`,
+//     status ?? 'pending',
+//     progress ?? 0,
+//     localPath ?? null,
+//     String(movieId)
+//   );
+// }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 

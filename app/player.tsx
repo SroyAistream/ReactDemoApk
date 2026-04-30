@@ -17,11 +17,13 @@ import {
   StatusBar,
   Dimensions,
   Platform,
+  ToastAndroid
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Video, { OnLoadData, OnErrorData, OnBufferData } from 'react-native-video';
+import Video, { OnLoadData, OnBufferData } from 'react-native-video';
+import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -53,6 +55,10 @@ export default function PlayerScreen() {
   const [error, setError] = useState<string | null>(null);
   const [showControls, setShowControls] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
+  const { getDownloadByMovieId } = useDownloadsStore();
+  const movieId = debugInfo?.movieId;
+  const downloadItem = movieId ? getDownloadByMovieId(movieId) : null;
+  const [lastStatus, setLastStatus] = useState<string | null>(null);
 
   // ====================================================
   // DEBUG LOGGING
@@ -88,15 +94,43 @@ export default function PlayerScreen() {
     }
   }, [showControls, isPaused]);
 
+  useEffect(() => {
+    if (!downloadItem || !movieName) return;
+
+    // Detect the specific moment the background sync completes
+    if (lastStatus === 'downloading' && downloadItem.status === 'completed') {
+      const message = `${movieName} download completed!`;
+
+      if (Platform.OS === 'android') {
+        ToastAndroid.show(message, ToastAndroid.LONG);
+      } else {
+        // Fallback for iOS or other platforms
+        console.log(`[Player] ${message}`);
+      }
+    }
+
+    setLastStatus(downloadItem.status);
+  }, [downloadItem?.status, movieName]);
+
   /**
    * Handle video load
    */
+  const { startDownload } = useDownloadsStore();
   const onLoad = (data: OnLoadData) => {
     console.log('[Player] onLoad - Video loaded successfully');
     console.log('[Player] Duration:', data.duration);
     console.log('[Player] m3u8 and ts requests SUCCESS');
     setIsLoading(false);
     setError(null);
+    if (params.autoDownload === 'true' && params.movieData) {
+      try {
+        const movie = JSON.parse(params.movieData as string);
+        console.log('[Player] Signaling background download for:', movie.name);
+        startDownload(movie, true); // Assuming hub is connected if we are streaming
+      } catch (e) {
+        console.error('[Player] Failed to trigger background download:', e);
+      }
+    }
   };
 
   /**

@@ -90,20 +90,35 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
       await get().loadDownloads();
 
       // Fire-and-forget — progress updates arrive via callback
-      downloadMovie(movie, isHubConnected, (progress) => {
-        set(state => ({
-          downloads: state.downloads.map(d =>
-            d.movie_id === movieId
-              ? { 
-                  ...d, 
-                  status: progress.status as DownloadStatus, 
-                  progress: progress.progress,
-                  local_path: progress.localPath || d.local_path
-                }
-              : d
-          ),
-        }));
-      })
+      // downloadMovie(movie, isHubConnected, (progress) => {
+      //   set(state => ({
+      //     downloads: state.downloads.map(d =>
+      //       d.movie_id === movieId
+      //         ? { 
+      //             ...d, 
+      //             status: progress.status as DownloadStatus, 
+      //             progress: progress.progress,
+      //             local_path: progress.localPath || d.local_path
+      //           }
+      //         : d
+      //     ),
+      //   }));
+      // })
+     downloadMovie(movie, isHubConnected, (progressData) => {
+      set((state) => {
+        const updatedDownloads = state.downloads.map((d) =>
+          d.movie_id === String(movieId)
+            ? { 
+                ...d, 
+                status: progressData.status as DownloadStatus, 
+                progress: progressData.progress, // Ensure this is the raw 0.0 - 1.0 value
+                local_path: progressData.localPath || d.local_path 
+              }
+            : d
+        );
+        return { downloads: updatedDownloads };
+      });
+    })
       .then(() => get().loadDownloads())
       .catch((err) => {
         console.error(`[DownloadsStore] Download failed for ${movieId}:`, err);

@@ -232,7 +232,6 @@ export default function MovieDetailScreen() {
     console.log('[Play] Headers to inject:', result.debugInfo.headersApplied);
     console.log('====================================================');
     navigateToPlayer();
-      startBackgroundDownload(result);
     if (result.success) {
   router.push({
     pathname: '/player' as any,
@@ -241,6 +240,9 @@ export default function MovieDetailScreen() {
       movieName: movie?.name || 'Video',
       headers: JSON.stringify(result.headers),
       debugInfo: JSON.stringify(result.debugInfo),
+      // Indicate if we need to trigger a background sync
+      autoDownload: !isDownloaded ? 'true' : 'false',
+      movieData: JSON.stringify(movie)
     },
   });
     
@@ -513,11 +515,16 @@ const getPreviewUrl = (): string | null => {
                 </>
               ) : isDownloading ? (
                 <>
-                  <ActivityIndicator size="small" color="#FF4D6D" />
+                  {/* <ActivityIndicator size="small" color="#FF4D6D" />
                   <Text style={styles.downloadButtonText}>
                     {Math.round(downloadProgress * 100)}%
+                  </Text> */}
+                  <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+                  <Text style={[styles.downloadButtonText, { color: '#10B981' }]}>
+                    Downloading..
                   </Text>
                 </>
+                
               ) : isPending ? (
                 <>
                   <Ionicons name="time-outline" size={20} color="#F59E0B" />

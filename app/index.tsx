@@ -14,6 +14,7 @@ import * as Network from 'expo-network';
 import { useAuthStore } from '../features/auth/presentation/providers/auth_provider';
 import { databaseHelper } from '../core/database/database_helper';
 import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
+import { useHubDetection } from '../core/hooks/useHubDetection';
 
 /** Quick hub detection: checks if device IP is in the 192.168.39.x subnet */
 async function isHubReachable(): Promise<boolean> {
@@ -38,9 +39,19 @@ export default function SplashScreen() {
   const [phase, setPhase] = useState<'init' | 'ready' | 'logging'>('init');
   const [error, setError] = useState<string | null>(null);
 
+  const { isHubConnected } = useHubDetection();
+
   useEffect(() => {
     initializeApp();
   }, []);
+
+  useEffect(() => {
+    if (isHubConnected) {
+      // Fire-and-forget: process any pending downloads in background
+      console.log('[Auto-Sync] Media Hub detected! Starting pending downloads...');
+      processPendingDownloads(true);
+    }
+  }, [isHubConnected]);
 
   const initializeApp = async () => {
     try {
@@ -53,12 +64,12 @@ export default function SplashScreen() {
       const loggedIn = await checkLogin();
       if (loggedIn) {
         // Fire-and-forget: process any pending downloads in background
-        isHubReachable().then(hubConnected => {
-          if (hubConnected) {
-            console.log('[Splash] Hub connected – processing pending downloads');
-            processPendingDownloads(true);
-          }
-        });
+        // isHubReachable().then(hubConnected => {
+        //   if (hubConnected) {
+        //     console.log('[Splash] Hub connected – processing pending downloads');
+        //     processPendingDownloads(true);
+        //   }
+        // });
         router.replace('/home');
         return;
       }
