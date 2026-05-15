@@ -1,0 +1,65 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+  <uses-permission android:name="android.permission.CHANGE_WIFI_STATE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+  <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+  <uses-permission android:name="android.permission.VIBRATE"/>
+  <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.VIEW"/>
+      <category android:name="android.intent.category.BROWSABLE"/>
+      <data android:scheme="https"/>
+    </intent>
+  </queries>
+  <application 
+    android:name=".MainApplication" 
+    android:label="@string/app_name" 
+    android:icon="@mipmap/ic_launcher" 
+    android:roundIcon="@mipmap/ic_launcher_round" 
+    android:allowBackup="true" 
+    android:theme="@style/AppTheme" 
+    android:supportsRtl="true" 
+    android:enableOnBackInvokedCallback="false"
+    android:usesCleartextTraffic="true"> ```
+
+---
+
+### **Why this fixes your build**
+* **Security Permission**: Android blocks all unencrypted (HTTP) traffic by default in production-style APKs. Because your Media Hub uses `http://demo.aistream.tv:88`, the OS kills the connection before it starts.
+* **Fixes Images**: This setting is required for `expo-image` to download the preview posters from the Hub.
+* **Fixes Video**: This resolves the `ERROR_CODE_IO_NETWORK_CONNECTION_FAILED` appearing in your player.
+
+### **Critical Follow-up Steps**
+1.  **Sync app.json**: Your `app.json` already has `"usesCleartextTraffic": true`, but for some reason, it isn't reaching the native manifest. After editing the file manually, run:
+    `npx expo prebuild --clean`
+2.  **Verify the IP Subnet**: Your error screenshot shows the app is trying to talk to **`192.168.39.209`**. If your hub is currently at **`192.168.29.1`**, you **must** connect to the hub and **Pull-to-Refresh** on the Home Screen to update the internal database with the correct URLs.
+3.  **Build**: Run `eas build -p android --profile preview`.
+
+Once you install this new APK, the player will have the necessary permissions to communicate with the local Media Hub.
+    <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
+    <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
+    <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
+    <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:scheme="aistream"/>
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>
