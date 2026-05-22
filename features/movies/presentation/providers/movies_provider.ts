@@ -67,27 +67,60 @@ export const useMoviesStore = create<MoviesState>((set, get) => ({
     // ─────────────────────────────────────────
     // FORCE REFRESH (PULL TO REFRESH)
     // ─────────────────────────────────────────
-    if (forceRefresh) {
-      set({ isRefreshing: true, error: null });
+    // ─────────────────────────────────────────
+// FORCE REFRESH (PULL TO REFRESH / Master Sync)
+// ─────────────────────────────────────────
+if (forceRefresh) {
+  set({ isRefreshing: true, error: null });
 
-      try {
-        const fresh = await moviesRepository.syncFromApi(isHubConnected);
+  try {
+    const fresh = await moviesRepository.syncFromApi(isHubConnected);
 
-       if (fresh.length > 0) {
-          set({ movies: fresh });
-        }
-
-      } catch (err: any) {
-       console.log('[MoviesStore] Refresh failed:', err);
-       if (get().movies.length === 0) {
-          set({ error: err?.message ?? 'Refresh failed' });
-        }
-      } finally {
-       set({ isRefreshing: false });
-      }
-
-      return;
+    if (fresh.length > 0) {
+      set({ movies: fresh });
+    } else {
+      // API returned empty list, safely load whatever we have in cache
+      const cached = await moviesRepository.getCachedMovies();
+      if (cached.length > 0) set({ movies: cached });
     }
+
+  } catch (err: any) {
+    console.log('[MoviesStore] Refresh failed, trying cache fallback:', err);
+    
+    // 🔥 CRITICAL FIX: If API fails, fall back to SQLite cache so UI isn't blank
+    const cached = await moviesRepository.getCachedMovies();
+    if (cached.length > 0) {
+      set({ movies: cached, error: null });
+    } else if (get().movies.length === 0) {
+      set({ error: err?.message ?? 'Refresh failed' });
+    }
+  } finally {
+    set({ isRefreshing: false });
+  }
+
+  return;
+}
+    // if (forceRefresh) {
+    //   set({ isRefreshing: true, error: null });
+
+    //   try {
+    //     const fresh = await moviesRepository.syncFromApi(isHubConnected);
+
+    //    if (fresh.length > 0) {
+    //       set({ movies: fresh });
+    //     }
+
+    //   } catch (err: any) {
+    //    console.log('[MoviesStore] Refresh failed:', err);
+    //    if (get().movies.length === 0) {
+    //       set({ error: err?.message ?? 'Refresh failed' });
+    //     }
+    //   } finally {
+    //    set({ isRefreshing: false });
+    //   }
+
+    //   return;
+    // }
 
     // ─────────────────────────────────────────
     // STEP 1: LOAD CACHE (INSTANT UI)

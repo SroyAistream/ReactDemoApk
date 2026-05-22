@@ -241,10 +241,32 @@ export default function HomeScreen() {
 };
 
   useEffect(() => {
-    // Load movies on mount (cache-first, then background sync)
-    // Passing isHubConnected ensures the database saves the correct poster URLs
-   initializeData()
+    const initializeData = async () => {
+      try {
+        // Always load cache first on a cold start to ensure something is on screen instantly
+        if (movies.length === 0) {
+          await fetchMovies(isHubConnected, false); 
+        }
+
+        // Now handle the background syncing strategy once the hook is ready
+        const shouldForceUpdate = !isHubConnected;
+        console.log(`[Index] App Cold Start Syncing. Hub: ${isHubConnected}`);
+
+        await fetchMovies(isHubConnected, shouldForceUpdate);
+        
+      } catch (err) {
+        console.error("[Index] Cold start initialization failed:", err);
+      }
+    };
+
+      initializeData();
   }, [isHubConnected]);
+
+  // useEffect(() => {
+  //   // Load movies on mount (cache-first, then background sync)
+  //   // Passing isHubConnected ensures the database saves the correct poster URLs
+  //  initializeData()
+  // }, [isHubConnected]);
 
   // Categorize movies whenever they change
   useEffect(() => {

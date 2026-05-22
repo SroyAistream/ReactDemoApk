@@ -30,9 +30,7 @@
     android:theme="@style/AppTheme" 
     android:supportsRtl="true" 
     android:enableOnBackInvokedCallback="false"
-    android:usesCleartextTraffic="true"> ```
-
----
+    android:usesCleartextTraffic="true"> 
 
 ### **Why this fixes your build**
 * **Security Permission**: Android blocks all unencrypted (HTTP) traffic by default in production-style APKs. Because your Media Hub uses `http://demo.aistream.tv:88`, the OS kills the connection before it starts.
