@@ -100,27 +100,52 @@ export class MoviesLocalDataSource {
   mapToResponse(rows: any[]): MovieResponse[] {
     return rows.map((row) => {
       let genres: Array<{ id: number; name: string }> = [];
+      
       try {
-        const parsed = typeof row.genres_json === 'string'
-          ? JSON.parse(row.genres_json)
-          : (row.genres_json ?? []);
-        genres = Array.isArray(parsed)
-          ? parsed.map((g: any) => typeof g === 'string' ? { id: 0, name: g } : g)
+        // Force string extraction or safe parsing fallback
+        const rawGenresJson = typeof row.genres_json === 'string' 
+          ? row.genres_json 
+          : JSON.stringify(row.genres_json ?? []);
+
+        const parsed = JSON.parse(rawGenresJson);
+        
+        if (Array.isArray(parsed)) {
+          genres = parsed.map((g: any) => {
+            if (!g) return { id: 0, name: 'Uncategorized' };
+            // IMMUNIZATION AGAINST MINIFICATION:
+            // Look for hardcoded fallback keys if the minifier altered property schemas
+            const nameValue = g.name || g.name_col || (typeof g === 'string' ? g : '');
+            const idValue = typeof g.id === 'number' ? g.id : 0;
+            return { id: idValue, name: String(nameValue || 'Uncategorized') };
+          });
+        }
+      } catch (genreError) {
+        console.error('[MoviesLocal] Minified genre extraction crash, using fallback string split:', genreError);
+        // Fallback string extraction loop if native layer array objects break
+        const fallbackSource = typeof row.genres === 'string' ? row.genres.split(',') : (row.genres ?? []);
+        genres = Array.isArray(fallbackSource)
+          ? fallbackSource.map((n: any) => ({ id: 0, name: typeof n === 'string' ? n.trim() : String(n?.name || '') }))
           : [];
-      } catch {
-        genres = (row.genres ?? []).map((n: string) => ({ id: 0, name: n }));
       }
 
       let videoType: { id: number; name: string } | null = null;
       try {
         if (row.video_type && row.video_type !== '{}') {
-          videoType = typeof row.video_type === 'object'
-            ? row.video_type
-            : JSON.parse(row.video_type);
+          const parsedVideo = typeof row.video_type === 'string'
+            ? JSON.parse(row.video_type)
+            : row.video_type;
+          
+          if (parsedVideo) {
+            videoType = {
+              id: Number(parsedVideo.id ?? 0),
+              name: String(parsedVideo.name || '')
+            };
+          }
         }
-      } catch { videoType = null; }
+      } catch { 
+        videoType = null; 
+      }
 
-      // FIX: Safely parse the quality_list back into an array from the JSON string
       let qualityList: any[] = [];
       try {
         if (row.quality_list_json) {
@@ -129,13 +154,12 @@ export class MoviesLocalDataSource {
             : row.quality_list_json;
         }
       } catch (e) {
-        console.warn(`[MoviesLocal] Failed to parse quality_list for movie ${row.name}`);
         qualityList = [];
       }
 
       return {
         movie_id:           Number(row.movie_id),
-        name:               row.name,
+        name:               String(row.name || ''),
         synopsis:           row.synopsis,
         poster:             row.poster_url,
         poster_url:         row.poster_url,
@@ -151,15 +175,75 @@ export class MoviesLocalDataSource {
         type:               row.type ? Number(row.type) : undefined,
         content_type:       row.content_type ?? 0,
         video_type:         videoType,
-        
-        // FIX: Attach the restored array to the response
-        quality_list:       qualityList,
-        
-        directors:          (row.directors ?? []).map((n: string) => ({ name: n })),
-        actors:             (row.actors  ?? []).map((n: string) => ({ name: n })),
+        quality_list:       Array.isArray(qualityList) ? qualityList : [],
+        directors:          Array.isArray(row.directors) ? row.directors.map((n: any) => ({ name: typeof n === 'string' ? n : String(n?.name || '') })) : [],
+        actors:             Array.isArray(row.actors) ? row.actors.map((n: any) => ({ name: typeof n === 'string' ? n : String(n?.name || '') })) : [],
       };
     });
   }
+  // mapToResponse(rows: any[]): MovieResponse[] {
+  //   return rows.map((row) => {
+  //     let genres: Array<{ id: number; name: string }> = [];
+  //     try {
+  //       const parsed = typeof row.genres_json === 'string'
+  //         ? JSON.parse(row.genres_json)
+  //         : (row.genres_json ?? []);
+  //       genres = Array.isArray(parsed)
+  //         ? parsed.map((g: any) => typeof g === 'string' ? { id: 0, name: g } : g)
+  //         : [];
+  //     } catch {
+  //       genres = (row.genres ?? []).map((n: string) => ({ id: 0, name: n }));
+  //     }
+
+  //     let videoType: { id: number; name: string } | null = null;
+  //     try {
+  //       if (row.video_type && row.video_type !== '{}') {
+  //         videoType = typeof row.video_type === 'object'
+  //           ? row.video_type
+  //           : JSON.parse(row.video_type);
+  //       }
+  //     } catch { videoType = null; }
+
+  //     // FIX: Safely parse the quality_list back into an array from the JSON string
+  //     let qualityList: any[] = [];
+  //     try {
+  //       if (row.quality_list_json) {
+  //         qualityList = typeof row.quality_list_json === 'string'
+  //           ? JSON.parse(row.quality_list_json)
+  //           : row.quality_list_json;
+  //       }
+  //     } catch (e) {
+  //       console.warn(`[MoviesLocal] Failed to parse quality_list for movie ${row.name}`);
+  //       qualityList = [];
+  //     }
+
+  //     return {
+  //       movie_id:           Number(row.movie_id),
+  //       name:               row.name,
+  //       synopsis:           row.synopsis,
+  //       poster:             row.poster_url,
+  //       poster_url:         row.poster_url,
+  //       theatrical_poster:  row.theatrical_poster,
+  //       preview:            row.preview,
+  //       preview_url:        row.preview_url,
+  //       duration:           row.duration,
+  //       publish_date:       row.publish_date,
+  //       release_date:       row.release_date,
+  //       country:            row.country,
+  //       star_score:         String(row.star_score ?? ''),
+  //       rating:             row.rating,
+  //       type:               row.type ? Number(row.type) : undefined,
+  //       content_type:       row.content_type ?? 0,
+  //       video_type:         videoType,
+        
+  //       // FIX: Attach the restored array to the response
+  //       quality_list:       qualityList,
+        
+  //       directors:          (row.directors ?? []).map((n: string) => ({ name: n })),
+  //       actors:             (row.actors  ?? []).map((n: string) => ({ name: n })),
+  //     };
+  //   });
+  // }
 }
 
 export const moviesLocalDataSource = new MoviesLocalDataSource();
