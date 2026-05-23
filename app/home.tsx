@@ -21,15 +21,8 @@ import { useDownloadsStore } from '../features/downloads/presentation/providers/
 import { useProfileStore } from '../features/profile/presentation/providers/profile_provider';
 import { useRoutersStore } from '../features/routers/presentation/providers/routers_provider';
 
-// ─────────────────────────────────────────────
-// Constants (match Android Java Config.java)
-// ─────────────────────────────────────────────
-/** Poster image base URL — mirrors Java Config.picURLPath. CORS resolved. */
 const POSTER_BASE_URL = 'https://demo.aistream.tv:8833/';
 
-// ─────────────────────────────────────────────
-// Section IDs (Android HomeAdapter)
-// ─────────────────────────────────────────────
 const SECTION_HOT_MOVIES = -1;
 const SECTION_RECOMMENDED = -2;
 const SECTION_MOVIES = -3;
@@ -38,21 +31,14 @@ const SECTION_EDUCATION = -5;
 const SECTION_RELIGION = -6;
 const SECTION_OTHERS = -7;
 
-// ─────────────────────────────────────────────
-// Content Type Constants (Android-equivalent)
-// ─────────────────────────────────────────────
-const CONTENT_TYPE_MOVIE = 1;       // Full-length movies
-const CONTENT_TYPE_SHORT_VIDEO = 4; // Short videos
+const CONTENT_TYPE_MOVIE = 1;       
+const CONTENT_TYPE_SHORT_VIDEO = 4; 
 
-// Video Type IDs for short videos (content_type == 4)
 const VIDEO_TYPE_ENTERTAINMENT = 1;
 const VIDEO_TYPE_EDUCATION = 2;
 const VIDEO_TYPE_RELIGION = 3;
 const VIDEO_TYPE_OTHERS = 4;
 
-// ─────────────────────────────────────────────
-// Types (aligned with real API response)
-// ─────────────────────────────────────────────
 interface GenreItem {
   id: number;
   name: string;
@@ -63,7 +49,6 @@ interface VideoType {
   name: string;
 }
 
-/** CDN domain entry – kept for type-checking API responses only, NOT used for poster URLs */
 interface ResourceDomain {
   cdnaddress1: string;
   cdnaddress2?: string;
@@ -74,47 +59,34 @@ interface Movie {
   movie_id: number;
   name: string;
   synopsis?: string;
-  /**
-   * Java: movie.getPoster() – relative path.
-   * Full URL = Config.picURLPath + movie.getPoster()
-   * i.e. POSTER_BASE_URL + poster
-   */
   poster?: string;
   theatrical_poster?: string;
   preview?: string;
-  poster_url?: string;         // mock data: full URL already
-  duration?: number;           // in seconds (real API)
+  poster_url?: string;         
+  duration?: number;           
   star_score?: string;
   rating?: number;
   genres?: GenreItem[];
   type?: number;
   vip?: number;
   release_date?: string;
-  content_type?: number;       // 1 = Movie, 4 = Short Video
-  video_type?: VideoType;      // For short videos: {id: 1-4, name: string}
-  resource_domains?: ResourceDomain[]; // present in API but NOT used for image URL
+  content_type?: number;       
+  video_type?: VideoType;      
+  resource_domains?: ResourceDomain[]; 
 }
 
-// Genre group within a section
 interface GenreGroup {
   genreName: string;
   movies: Movie[];
 }
 
-// Section with genre groups (Android HomeAdapter structure)
 interface MovieSection {
   sectionId: number;
   sectionTitle: string;
   genreGroups: GenreGroup[];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Neutral grey blurhash — shown while the real poster downloads.
-// A generic dark-grey placeholder that fits the dark UI theme.
-// ─────────────────────────────────────────────────────────────────────────────
 const PLACEHOLDER_BLURHASH = 'L02}lN0000%g0000WB9Z9Zt79F-p';
-
-
 
 interface MovieCardItemProps {
   movie: Movie;
@@ -124,11 +96,6 @@ interface MovieCardItemProps {
   onPress: () => void;
 }
 
-/**
- * Wrapped in React.memo so the card only re-renders when its own props change.
- * This prevents every visible card from re-downloading its image when
- * the parent list re-renders (e.g. on scroll or section update).
- */
 const MovieCardItem = memo(function MovieCardItem({
   movie,
   posterUrl,
@@ -139,14 +106,6 @@ const MovieCardItem = memo(function MovieCardItem({
   return (
     <TouchableOpacity style={styles.movieCard} activeOpacity={0.9} onPress={onPress}>
       <View style={styles.posterContainer}>
-
-        {/*
-         * expo-image gives us for free:
-         *  - cachePolicy="memory-disk"  → cached on first load, never re-downloaded
-         *  - transition={300}           → smooth 300ms fade-in when image arrives
-         *  - placeholder={blurhash}     → soft blurred preview while loading
-         *  - contentFit="cover"         → same as resizeMode="cover"
-         */}
         {posterUrl ? (
           <Image
             source={{ uri: posterUrl }}
@@ -156,9 +115,6 @@ const MovieCardItem = memo(function MovieCardItem({
             transition={300}
             placeholder={{ blurhash: PLACEHOLDER_BLURHASH }}
             placeholderContentFit="cover"
-            onError={() =>
-              console.warn(`[Poster FAILED] ${movie.name} → ${posterUrl}`)
-            }
           />
         ) : (
           <LinearGradient
@@ -169,7 +125,6 @@ const MovieCardItem = memo(function MovieCardItem({
           </LinearGradient>
         )}
 
-        {/* Rating Badge */}
         {score > 0 && (
           <View style={styles.ratingBadge}>
             <Ionicons name="star" size={10} color="#FFD700" />
@@ -177,14 +132,12 @@ const MovieCardItem = memo(function MovieCardItem({
           </View>
         )}
 
-        {/* VIP Badge */}
         {(movie.vip === 1 || movie.type === 2) && (
           <View style={styles.vipBadge}>
             <Text style={styles.vipText}>VIP</Text>
           </View>
         )}
 
-        {/* Play Button */}
         <View style={styles.playButton}>
           <Ionicons name="play" size={16} color="#FFFFFF" />
         </View>
@@ -198,77 +151,32 @@ const MovieCardItem = memo(function MovieCardItem({
   );
 });
 
-
-
-
-
 export default function HomeScreen() {
   const router = useRouter();
   const [sections, setSections] = useState<MovieSection[]>([]);
   const [error, setError] = useState<string | null>(null);
   const { processPendingDownloads } = useDownloadsStore();
-
-  // 1. Initialize the detection hook
   const { isHubConnected } = useHubDetection();
 
-  // Use the offline-first movies store
   const { movies, isLoading, isRefreshing, fetchMovies } = useMoviesStore();
-  const {fetchProfile } = useProfileStore();
-      const { fetchRouters } = useRoutersStore();
-
-  const initializeData = async () => {
-  try {
-    // If not on Hub (meaning on Internet), we force a refresh to overwrite cache
-    // If on Hub, we don't force a refresh, so it just hits 'Step 1: Load Cache'
-    const shouldForceUpdate = !isHubConnected;
-
-    console.log(`[Index] Syncing. Hub: ${isHubConnected}, ForceUpdate: ${shouldForceUpdate}`);
-
-    
-    
-    if (!isHubConnected) {
-      // Only sync these if we actually have an internet connection
-      // Sequential calls to prevent SQLite transaction collisions
-    await fetchMovies(isHubConnected, shouldForceUpdate);
-      await fetchRouters(isHubConnected); 
-      await fetchProfile(isHubConnected, true);
-    }
-    
-    console.log('[Index] Sequential sync completed.');
-  } catch (err) {
-    console.error("[Index] Initialization failed:", err);
-  }
-};
+  const { fetchProfile } = useProfileStore();
+  const { fetchRouters } = useRoutersStore();
 
   useEffect(() => {
     const initializeData = async () => {
       try {
-        // Always load cache first on a cold start to ensure something is on screen instantly
         if (movies.length === 0) {
           await fetchMovies(isHubConnected, false); 
         }
-
-        // Now handle the background syncing strategy once the hook is ready
         const shouldForceUpdate = !isHubConnected;
-        console.log(`[Index] App Cold Start Syncing. Hub: ${isHubConnected}`);
-
         await fetchMovies(isHubConnected, shouldForceUpdate);
-        
       } catch (err) {
         console.error("[Index] Cold start initialization failed:", err);
       }
     };
-
-      initializeData();
+    initializeData();
   }, [isHubConnected]);
 
-  // useEffect(() => {
-  //   // Load movies on mount (cache-first, then background sync)
-  //   // Passing isHubConnected ensures the database saves the correct poster URLs
-  //  initializeData()
-  // }, [isHubConnected]);
-
-  // Categorize movies whenever they change
   useEffect(() => {
     if (movies.length > 0) {
       const categorizedSections = categorizeMovies(movies as Movie[]);
@@ -277,82 +185,45 @@ export default function HomeScreen() {
   }, [movies]);
 
   useEffect(() => {
-      if (isHubConnected) {
-        // Fire-and-forget: process any pending downloads in background
-        console.log('[Auto-Sync] Media Hub detected! Starting pending downloads...');
-        processPendingDownloads(true);
-      }
-    }, [isHubConnected]);
+    if (isHubConnected) {
+      console.log('[Auto-Sync] Media Hub detected! Starting pending downloads...');
+      processPendingDownloads(true);
+    }
+  }, [isHubConnected]);
   
-
-  // This function adds the button to your navigation bar
   const navigateToDownloads = () => {
-    router.push('/DownloadsScreen'); // Assumes your file is app/downloads.tsx
+    router.push('/DownloadsScreen'); 
   };
 
-  // Pull-to-refresh handler
   const onRefresh = useCallback(() => {
-    // Note: We don't necessarily need to clear sections here if we want to 
-    // keep the old data visible until the refresh completes, but keeping 
-    // it matches your current UI clear-and-reload preference.
     setError(null);
-    // setSections([]);
-    fetchMovies(isHubConnected,true); // forceRefresh = true
-  }, [fetchMovies,isHubConnected]);
+    fetchMovies(isHubConnected, true); 
+  }, [fetchMovies, isHubConnected]);
 
-  /**
-   * Categorize movies following Android HomeAdapter behavior.
-   * 
-   * Sections are built manually in this EXACT order:
-   * 1. Hot Movies    - Top rated movies (content_type == 1) by star_score
-   * 2. Recommended   - Free movies (content_type == 1, type == 1)
-   * 3. Movies        - All movies (content_type == 1)
-   * 4. Entertainment - Short videos (content_type == 4, video_type.id == 1)
-   * 5. Education     - Short videos (content_type == 4, video_type.id == 2)
-   * 6. Religion      - Short videos (content_type == 4, video_type.id == 3)
-   * 7. Others        - Short videos (content_type == 4, video_type.id == 4)
-   * 
-   * Inside each section, movies are grouped by genre.name.
-   * A movie may belong to multiple genres (duplicated into each matching genre group).
-   * Empty sections and genres are hidden.
-   */
   const categorizeMovies = (movies: Movie[]): MovieSection[] => {
     const result: MovieSection[] = [];
 
-    // Helper: get numeric star score
     const getScore = (m: Movie): number =>
       parseFloat(m.star_score ?? String(m.rating ?? 0)) || 0;
 
-    /**
-     * Group movies by genre.name within a section.
-     * A movie with multiple genres is duplicated into each genre group.
-     * Movies without genres go into "Uncategorized".
-     */
     const groupByGenre = (sectionMovies: Movie[]): GenreGroup[] => {
       const genreMap = new Map<string, Movie[]>();
 
       sectionMovies.forEach((movie) => {
         const genres = movie.genres ?? [];
         if (genres.length === 0) {
-          // Movie has no genres - put in "Uncategorized"
           const key = 'Uncategorized';
-          if (!genreMap.has(key)) {
-            genreMap.set(key, []);
-          }
+          if (!genreMap.has(key)) genreMap.set(key, []);
           genreMap.get(key)!.push(movie);
         } else {
-          // Duplicate movie into each genre group
           genres.forEach((genre) => {
             const genreName = genre.name || 'Uncategorized';
-            if (!genreMap.has(genreName)) {
-              genreMap.set(genreName, []);
-            }
+            if (!genreMap.has(genreName)) genreMap.set(genreName, []);
             genreMap.get(genreName)!.push(movie);
           });
         }
       });
 
-      // Convert map to array, sorted alphabetically by genre name
       const groups: GenreGroup[] = [];
       [...genreMap.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
@@ -365,9 +236,6 @@ export default function HomeScreen() {
       return groups;
     };
 
-    /**
-     * Create a section with genre groups if there are any movies.
-     */
     const createSection = (
       sectionId: number,
       sectionTitle: string,
@@ -385,11 +253,9 @@ export default function HomeScreen() {
       };
     };
 
-    // Filter movies by content_type
     const fullMovies = movies.filter((m) => m.content_type === CONTENT_TYPE_MOVIE);
     const shortVideos = movies.filter((m) => m.content_type === CONTENT_TYPE_SHORT_VIDEO);
 
-    // ── 1. HOT MOVIES ───────────────────────────────────────────────────────
     const scoredMovies = fullMovies.filter((m) => getScore(m) > 0);
     const hotMovies = scoredMovies.length > 0
       ? [...scoredMovies].sort((a, b) => getScore(b) - getScore(a)).slice(0, 10)
@@ -398,51 +264,32 @@ export default function HomeScreen() {
     const hotSection = createSection(SECTION_HOT_MOVIES, 'HOT MOVIES', hotMovies);
     if (hotSection) result.push(hotSection);
 
-    // ── 2. RECOMMENDED ──────────────────────────────────────────────────────
     const recommendedMovies = fullMovies.filter((m) => m.type === 1).slice(0, 10);
     const recommendedSection = createSection(SECTION_RECOMMENDED, 'RECOMMENDED', recommendedMovies);
     if (recommendedSection) result.push(recommendedSection);
 
-    // ── 3. MOVIES ───────────────────────────────────────────────────────────
     const moviesSection = createSection(SECTION_MOVIES, 'MOVIES', fullMovies);
     if (moviesSection) result.push(moviesSection);
 
-    // ── 4. ENTERTAINMENT ────────────────────────────────────────────────────
-    const entertainmentVideos = shortVideos.filter(
-      (m) => m.video_type?.id === VIDEO_TYPE_ENTERTAINMENT
-    );
+    const entertainmentVideos = shortVideos.filter((m) => m.video_type?.id === VIDEO_TYPE_ENTERTAINMENT);
     const entertainmentSection = createSection(SECTION_ENTERTAINMENT, 'ENTERTAINMENT', entertainmentVideos);
     if (entertainmentSection) result.push(entertainmentSection);
 
-    // ── 5. EDUCATION ────────────────────────────────────────────────────────
-    const educationVideos = shortVideos.filter(
-      (m) => m.video_type?.id === VIDEO_TYPE_EDUCATION
-    );
+    const educationVideos = shortVideos.filter((m) => m.video_type?.id === VIDEO_TYPE_EDUCATION);
     const educationSection = createSection(SECTION_EDUCATION, 'EDUCATION', educationVideos);
     if (educationSection) result.push(educationSection);
 
-    // ── 6. RELIGION ─────────────────────────────────────────────────────────
-    const religionVideos = shortVideos.filter(
-      (m) => m.video_type?.id === VIDEO_TYPE_RELIGION
-    );
+    const religionVideos = shortVideos.filter((m) => m.video_type?.id === VIDEO_TYPE_RELIGION);
     const religionSection = createSection(SECTION_RELIGION, 'RELIGION', religionVideos);
     if (religionSection) result.push(religionSection);
 
-    // ── 7. OTHERS ───────────────────────────────────────────────────────────
-    const othersVideos = shortVideos.filter(
-      (m) => m.video_type?.id === VIDEO_TYPE_OTHERS
-    );
+    const othersVideos = shortVideos.filter((m) => m.video_type?.id === VIDEO_TYPE_OTHERS);
     const othersSection = createSection(SECTION_OTHERS, 'OTHERS', othersVideos);
     if (othersSection) result.push(othersSection);
 
     return result;
   };
 
-  /**
-   * Format duration following Android Java pattern.
-   * Real API returns duration in SECONDS → convert to Xh Ym.
-   * e.g. 3600 sec → "1h", 360 sec → "6m", 7380 sec → "2h 3m"
-   */
   const formatDuration = (seconds?: number): string => {
     if (!seconds || seconds <= 0) return '';
     const totalMinutes = Math.round(seconds / 60);
@@ -453,39 +300,16 @@ export default function HomeScreen() {
     return `${mins}m`;
   };
 
-  /**
-   * Get numeric star score from either star_score (string) or rating (number).
-   */
   const getStarScore = (movie: Movie): number =>
     parseFloat(movie.star_score ?? String(movie.rating ?? 0)) || 0;
 
-  /**
-   * Constructs the full poster URL – exact Java pattern from all adapters:
-   *
-   *   Java (ItemAdapterMovie, ViewPageAdapter, SearchRecycleAdapter, etc.):
-   *     String fullUrl = Config.picURLPath + movie.getPoster();
-   *
-   * Config.picURLPath = "https://demo.aistream.tv:88/"
-   *
-   * NOTE: resource_domains is present in the API response but is NEVER used
-   * for image URLs anywhere in the Java source code (0 occurrences).
-   */
   const getPosterUrl = (movie: Movie): string | null => {
-    // Mock data: poster_url is already a full URL
     if (movie.poster_url && movie.poster_url.startsWith('http')) {
       return movie.poster_url;
     }
-
-    // Prefer poster → theatrical_poster → preview (same priority as Java getPoster())
-    const relativePath =
-      movie.poster ??
-      movie.theatrical_poster ??
-      movie.preview ??
-      null;
-
+    const relativePath = movie.poster ?? movie.theatrical_poster ?? movie.preview ?? null;
     if (!relativePath) return null;
 
-    // Java: Config.picURLPath + movie.getPoster()
     const base = POSTER_BASE_URL.endsWith('/') ? POSTER_BASE_URL : POSTER_BASE_URL + '/';
     const path = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
     return base + path;
@@ -497,19 +321,27 @@ export default function HomeScreen() {
     router.replace('/');
   };
 
-  /**
-   * Render a single genre group with horizontal movie list.
-   */
-  const renderGenreGroup = (genreGroup: GenreGroup, sectionId: number) => {
+  const renderGenreGroup = (genreGroup: GenreGroup, sectionId: number, sectionTitle: string) => {
     if (genreGroup.movies.length === 0) return null;
 
     return (
       <View key={`${sectionId}-${genreGroup.genreName}`} style={styles.genreGroup}>
-        
         <View style={styles.genreHeader}>
           <Text style={styles.genreTitle}>{genreGroup.genreName}</Text>
           {genreGroup.movies.length > 4 && (
-            <TouchableOpacity>
+            <TouchableOpacity 
+              activeOpacity={0.7}
+              onPress={() => {
+                router.push({
+                  pathname: '/genre-see-all', 
+                  params: { 
+                    title: sectionTitle,
+                    genre: genreGroup.genreName,
+                    sectionId: sectionId
+                  },
+                });
+              }}
+            >
               <Text style={styles.seeAllText}>See All</Text>
             </TouchableOpacity>
           )}
@@ -531,7 +363,6 @@ export default function HomeScreen() {
                 duration={duration}
                 score={score}
                 onPress={() => {
-                  // Navigate to movie detail, passing movie as JSON string
                   router.push({
                     pathname: '/movie-detail',
                     params: { movie: JSON.stringify(movie) },
@@ -545,41 +376,20 @@ export default function HomeScreen() {
     );
   };
 
-  /**
-   * Render a section with its genre groups.
-   * Hierarchy: Section Title → Genre Title → Horizontal movie list
-   */
   const renderSection = (section: MovieSection) => {
     if (section.genreGroups.length === 0) return null;
 
     return (
       <View key={section.sectionId} style={styles.section}>
-        {/* Section Header */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{section.sectionTitle}</Text>
         </View>
-
-        {/* Genre Groups within the section */}
         {section.genreGroups.map((genreGroup) =>
-          renderGenreGroup(genreGroup, section.sectionId)
+          renderGenreGroup(genreGroup, section.sectionId, section.sectionTitle)
         )}
       </View>
     );
   };
-
-  if (isLoading && sections.length === 0) {
-    return (
-      <LinearGradient colors={['#12001F', '#000000']} style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FF4D6D" />
-          <Text style={styles.loadingText}>Loading movies...</Text>
-        </View>
-      </LinearGradient>
-    );
-  }
-
-  // Count total genre groups across all sections
-  const totalGenreGroups = sections.reduce((sum, s) => sum + s.genreGroups.length, 0);
 
   return (
     <LinearGradient colors={['#12001F', '#000000']} style={styles.container}>
@@ -595,7 +405,6 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Header */}
         <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>Discover</Text>
@@ -608,13 +417,9 @@ export default function HomeScreen() {
             <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/account')}>
               <Ionicons name="person-circle-outline" size={22} color="#FFFFFF" />
             </TouchableOpacity>
-            {/* <View style={styles.header1}> */}
-        {/* <Text style={styles.title}>AiStream</Text> */}
-        <TouchableOpacity onPress={navigateToDownloads} style={styles.downloadIcon}>
-          <Ionicons name="download-outline" size={26} color="#FFF" />
-          {/* Optional: Add a small red dot if there are active downloads */}
-        </TouchableOpacity>
-      {/* </View> */}
+            <TouchableOpacity onPress={navigateToDownloads} style={styles.iconButton}>
+              <Ionicons name="download-outline" size={22} color="#FFF" />
+            </TouchableOpacity>
             <TouchableOpacity style={styles.iconButton} onPress={handleLogout}>
               <Ionicons name="log-out-outline" size={22} color="#FF4D6D" />
             </TouchableOpacity>
@@ -628,10 +433,9 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Movie Sections - following Android HomeAdapter */}
         {sections.map(section => renderSection(section))}
 
-        {sections.length === 0 && !error && (
+        {sections.length === 0 && !isLoading && !error && (
           <View style={styles.emptyContainer}>
             <Ionicons name="film-outline" size={64} color="#6B7280" />
             <Text style={styles.emptyText}>No movies found</Text>
@@ -640,7 +444,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         )}
-
         <View style={styles.bottomPadding} />
       </ScrollView>
     </LinearGradient>
@@ -648,231 +451,40 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#9CA3AF',
-  },
-  header: {
-    paddingTop: 60,
-    paddingBottom: 20,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    marginTop: 4,
-  },
-  headerButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#1C1C1E',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 77, 109, 0.3)',
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 77, 109, 0.1)',
-    padding: 12,
-    borderRadius: 12,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    gap: 8,
-  },
-  errorText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#FF4D6D',
-  },
-  section: {
-    marginBottom: 28,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 77, 109, 0.2)',
-  },
-  sectionTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#FF4D6D',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  genreGroup: {
-    marginBottom: 16,
-  },
-  genreHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    marginBottom: 10,
-  },
-  genreTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#E5E7EB',
-    letterSpacing: 0.3,
-  },
-  seeAllText: {
-    fontSize: 13,
-    color: '#FF4D6D',
-    fontWeight: '600',
-  },
-  horizontalList: {
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  movieCard: {
-    width: 130,
-    backgroundColor: '#1C1C1E',
-    borderRadius: 12,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 77, 109, 0.15)',
-  },
-  posterContainer: {
-    width: '100%',
-    aspectRatio: 2 / 3,
-    position: 'relative',
-  },
-  poster: {
-    width: '100%',
-    height: '100%',
-  },
-  posterPlaceholder: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  ratingBadge: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6,
-    gap: 3,
-  },
-  ratingText: {
-    fontSize: 10,
-    fontWeight: 'bold',
-    color: '#FFD700',
-  },
-  vipBadge: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    backgroundColor: '#FF4D6D',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  vipText: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  playButton: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 77, 109, 0.9)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  movieInfo: {
-    padding: 10,
-  },
-  movieTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  movieDuration: {
-    fontSize: 11,
-    color: '#9CA3AF',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 60,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  retryButton: {
-    backgroundColor: '#FF4D6D',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-  },
-  retryButtonText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  bottomPadding: {
-    height: 40,
-  },
-  header1: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#000',
-  },
-  title: {
-    color: '#FFF',
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  downloadIcon: {
-    padding: 4,
-  },
+  container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scrollView: { flex: 1 },
+  loadingText: { marginTop: 16, fontSize: 16, color: '#9CA3AF' },
+  header: { paddingTop: 60, paddingBottom: 20, paddingHorizontal: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  headerTitle: { fontSize: 32, fontWeight: 'bold', color: '#FFFFFF' },
+  headerSubtitle: { fontSize: 14, color: '#9CA3AF', marginTop: 4 },
+  headerButtons: { flexDirection: 'row', gap: 12 },
+  iconButton: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#1C1C1E', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255, 77, 109, 0.3)' },
+  errorBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 77, 109, 0.1)', padding: 12, borderRadius: 12, marginHorizontal: 16, marginBottom: 16, gap: 8 },
+  errorText: { flex: 1, fontSize: 13, color: '#FF4D6D' },
+  section: { marginBottom: 28 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 16, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255, 77, 109, 0.2)' },
+  sectionTitle: { fontSize: 22, fontWeight: 'bold', color: '#FF4D6D', letterSpacing: 1, textTransform: 'uppercase' },
+  genreGroup: { marginBottom: 16 },
+  genreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginBottom: 10 },
+  genreTitle: { fontSize: 15, fontWeight: '600', color: '#E5E7EB', letterSpacing: 0.3 },
+  seeAllText: { fontSize: 13, color: '#FF4D6D', fontWeight: '600' },
+  horizontalList: { paddingHorizontal: 16, gap: 12 },
+  movieCard: { width: 130, backgroundColor: '#1C1C1E', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255, 77, 109, 0.15)' },
+  posterContainer: { width: '100%', aspectRatio: 2 / 3, position: 'relative' },
+  poster: { width: '100%', height: '100%' },
+  posterPlaceholder: { width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' },
+  ratingBadge: { position: 'absolute', top: 6, right: 6, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0, 0, 0, 0.75)', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 6, gap: 3 },
+  ratingText: { fontSize: 10, fontWeight: 'bold', color: '#FFD700' },
+  vipBadge: { position: 'absolute', top: 6, left: 6, backgroundColor: '#FF4D6D', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  vipText: { fontSize: 9, fontWeight: 'bold', color: '#FFFFFF' },
+  playButton: { position: 'absolute', bottom: 6, right: 6, width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(255, 77, 109, 0.9)', justifyContent: 'center', alignItems: 'center' },
+  movieInfo: { padding: 10 },
+  movieTitle: { fontSize: 12, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 4 },
+  movieDuration: { fontSize: 11, color: '#9CA3AF' },
+  emptyContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60 },
+  emptyText: { fontSize: 16, color: '#6B7280', marginTop: 16, marginBottom: 24 },
+  retryButton: { backgroundColor: '#FF4D6D', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
+  retryButtonText: { fontSize: 14, fontWeight: 'bold', color: '#FFFFFF' },
+  bottomPadding: { height: 40 }
 });
