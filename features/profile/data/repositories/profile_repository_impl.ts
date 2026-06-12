@@ -1,8 +1,36 @@
-import { Profile } from '../../domain/entities/profile';
+import { Profile, ProfileResponse } from '../../domain/entities/profile';
 import { profileRemoteDataSource } from '../datasources/profile_remote_datasource';
 import { profileLocalDataSource } from '../datasources/profile_local_datasource';
 
 export class ProfileRepositoryImpl {
+  private toProfile(profile: ProfileResponse): Profile {
+    const fullName = [profile.name, profile.surname].filter(Boolean).join(' ').trim();
+    const balance = typeof profile.balance === 'number'
+      ? profile.balance
+      : parseFloat(String(profile.balance ?? 0)) || 0;
+    const availableDownloads = Number(profile.available_downloads ?? profile.max_downloads ?? 0) || 0;
+
+    const normalized = {
+      ...profile,
+      name: fullName || profile.user_name || profile.account || profile.user_id || profile.name,
+      account_id: profile.account_id || profile.account || profile.user_id,
+      balance,
+      available_downloads: availableDownloads,
+      max_downloads: Number(profile.max_downloads ?? 0) || undefined,
+    };
+
+    console.log('[ProfileRepo] Normalized profile for UI:', {
+      user_id: normalized.user_id,
+      name: normalized.name,
+      account_id: normalized.account_id,
+      balance: normalized.balance,
+      plan_name: normalized.plan_name,
+      available_downloads: normalized.available_downloads,
+    });
+
+    return normalized;
+  }
+
   /**
    * Offline-first getCachedProfile.
    *
@@ -27,9 +55,14 @@ export class ProfileRepositoryImpl {
       console.log('[ProfileRepo] Syncing profile from API...');
       const fresh = await profileRemoteDataSource.getProfile(isHubConnected);
       if (fresh) {
-        await profileLocalDataSource.saveProfile(fresh,isHubConnected);
-        console.log('[ProfileRepo] Saved profile to cache');
-        return await profileLocalDataSource.getProfile();
+        const profile = this.toProfile(fresh);
+        try {
+          await profileLocalDataSource.saveProfile(profile, isHubConnected);
+          console.log('[ProfileRepo] Profile cache checked');
+        } catch (cacheError) {
+          console.warn('[ProfileRepo] Profile cache save skipped:', cacheError);
+        }
+        return profile;
       }
       return null;
     } catch (error) {

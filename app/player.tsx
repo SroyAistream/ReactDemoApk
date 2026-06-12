@@ -22,7 +22,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Video, { OnLoadData, OnBufferData } from 'react-native-video';
+import Video, { OnLoadData, OnBufferData, OnVideoErrorData } from 'react-native-video';
 import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -144,7 +144,7 @@ export default function PlayerScreen() {
   /**
    * Handle video error
    */
-  const onError = (data: OnErrorData) => {
+  const onError = (data: OnVideoErrorData) => {
     console.error('[Player] Video error:', data.error);
     const errorMessage = data.error?.errorString || data.error?.code?.toString() || 'Unknown playback error';
     console.log('[Player] Playback FAILED - Error:', errorMessage);

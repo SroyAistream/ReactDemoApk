@@ -11,12 +11,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '../core/constants/api_constants';
+import { clearAllAppCache } from '../core/services/app_cache';
 import { useProfileStore } from '../features/profile/presentation/providers/profile_provider';
 import { useHubDetection } from '../core/hooks/useHubDetection';
-// Profile cache key
-const PROFILE_CACHE_KEY = 'cached_profile';
 
 // Menu item interface
 interface MenuItem {
@@ -35,7 +32,7 @@ export default function AccountScreen() {
   const { isHubConnected } = useHubDetection();
 
   // Use the offline-first profile store
-  const { profile, isLoading, fetchProfile, clearProfile } = useProfileStore();
+  const { profile, isLoading, fetchProfile } = useProfileStore();
 
   // 3. Make the initial load reactive to network changes
   useEffect(() => {
@@ -112,18 +109,13 @@ export default function AccountScreen() {
   };
 
   const handleLogout = async () => {
-    // Clear all auth and profile data
-    await AsyncStorage.multiRemove([
-      STORAGE_KEYS.TOKEN,
-      STORAGE_KEYS.USER_ID,
-      STORAGE_KEYS.PASSWORD,
-      STORAGE_KEYS.IS_LOGGED_IN,
-      STORAGE_KEYS.TOKEN_EXPIRY,
-      PROFILE_CACHE_KEY,
-    ]);
-    // Clear profile from store
-    clearProfile();
-    router.replace('/');
+    try {
+      await clearAllAppCache();
+    } catch (error) {
+      console.error('Logout cache clear error:', error);
+    } finally {
+      router.replace('/');
+    }
   };
 // 4. Update the refresh handler to pass the network state
   const handleRefresh = () => {

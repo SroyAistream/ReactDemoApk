@@ -71,6 +71,11 @@ class DatabaseHelper {
     return Promise.resolve();
   }
 
+  async clearAllCachedData() {
+    console.log('Platform stub - clearAllCachedData skipped');
+    return Promise.resolve();
+  }
+
   async getMoviesCount() {
     console.log('Web platform - returning 0 for movie count');
     return 0;

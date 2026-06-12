@@ -2,6 +2,8 @@ import { Router, RouterResponse } from '../../domain/entities/router';
 import { routersRemoteDataSource } from '../datasources/routers_remote_datasource';
 import { routersLocalDataSource } from '../datasources/routers_local_datasource';
 
+let syncPromise: Promise<Router[]> | null = null;
+
 export class RoutersRepositoryImpl {
   /**
    * Offline-first getCachedRouters.
@@ -23,15 +25,28 @@ export class RoutersRepositoryImpl {
    * Never throws — returns [] on error so cached data is preserved.
    */
   async syncFromApi(isHubConnected: boolean): Promise<Router[]> {
+    if (syncPromise) return syncPromise;
+
+    syncPromise = this.doSyncFromApi(isHubConnected).finally(() => {
+      syncPromise = null;
+    });
+
+    return syncPromise;
+  }
+
+  private async doSyncFromApi(isHubConnected: boolean): Promise<Router[]> {
     try {
       console.log(`[RoutersRepo] Syncing routers from API...(Hub: ${isHubConnected})`);
-      const fresh = await routersRemoteDataSource.getRouters();
+      const fresh = await routersRemoteDataSource.getRouters(isHubConnected);
       if (fresh.length > 0) {
-        await routersLocalDataSource.saveRouters(fresh,isHubConnected);
-        console.log(`[RoutersRepo] Saved ${fresh.length} routers to cache`);
+        try {
+          await routersLocalDataSource.saveRouters(fresh,isHubConnected);
+          console.log(`[RoutersRepo] Saved ${fresh.length} routers to cache`);
+        } catch (cacheError) {
+          console.warn('[RoutersRepo] Router cache save skipped:', cacheError);
+        }
       }
-      // Return mapped entities
-      return await routersLocalDataSource.getRouters();
+      return fresh as Router[];
     } catch (error) {
       console.warn('[RoutersRepo] API sync failed (offline?), keeping cache:', error);
       return [];

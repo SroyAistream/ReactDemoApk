@@ -7,21 +7,30 @@ export class ProfileLocalDataSource {
    */
   async saveProfile(profile: ProfileResponse,isHubConnected: boolean): Promise<void> {
     try {
+      const rawName = profile.name?.trim() ?? '';
+      const rawSurname = profile.surname?.trim() ?? '';
+      const fullName = rawName && rawSurname && rawName.toLowerCase().includes(rawSurname.toLowerCase())
+        ? rawName
+        : [rawName, rawSurname].filter(Boolean).join(' ').trim();
+      const balance = typeof profile.balance === 'number'
+        ? profile.balance
+        : parseFloat(String(profile.balance ?? 0)) || 0;
+      const availableDownloads = Number(profile.available_downloads ?? profile.max_downloads ?? 0) || 0;
       const row = {
+        ...profile,
         user_id: profile.user_id ?? null,
-        name: profile.name ?? null,
-        account_id: profile.account_id ?? profile.user_id ?? null,
-        balance: typeof profile.balance === 'number' ? profile.balance : parseFloat(String(profile.balance)) || 0,
+        name: fullName || profile.user_name || profile.account || profile.user_id || profile.name || null,
+        account_id: profile.account_id ?? profile.account ?? profile.user_id ?? null,
+        balance,
         plan_name: profile.plan_name ?? null,
-        available_downloads: profile.available_downloads ?? 0,
+        available_downloads: availableDownloads,
         email: profile.email ?? null,
         phone: profile.phone ?? null,
       };
       await databaseHelper.saveProfile(row);
       console.log('[ProfileLocal] Saved profile to cache');
     } catch (error) {
-      console.error('[ProfileLocal] saveProfile error:', error);
-      throw error;
+      console.warn('[ProfileLocal] saveProfile skipped:', error);
     }
   }
 
@@ -43,13 +52,23 @@ export class ProfileLocalDataSource {
    * Maps DB row back to Profile entity.
    */
   private mapToEntity(row: any): Profile {
+    const rawName = row.name?.trim?.() ?? '';
+    const rawSurname = row.surname?.trim?.() ?? '';
+    const fullName = rawName && rawSurname && rawName.toLowerCase().includes(rawSurname.toLowerCase())
+      ? rawName
+      : [rawName, rawSurname].filter(Boolean).join(' ').trim();
     return {
       user_id: row.user_id ?? undefined,
-      name: row.username ?? row.name ?? undefined,
-      account_id: row.account_id ?? row.user_id ?? undefined,
+      name: fullName || row.username || row.user_name || row.account || row.user_id || undefined,
+      surname: row.surname ?? undefined,
+      user_name: row.user_name ?? undefined,
+      account: row.account ?? undefined,
+      account_id: row.account_id ?? row.account ?? row.user_id ?? undefined,
       balance: typeof row.balance === 'number' ? row.balance : parseFloat(String(row.balance)) || 0,
       plan_name: row.plan_name ?? undefined,
-      available_downloads: row.available_downloads ?? 0,
+      available_downloads: Number(row.available_downloads ?? row.max_downloads ?? 0) || 0,
+      max_downloads: Number(row.max_downloads ?? 0) || undefined,
+      enc_accounting: row.enc_accounting ?? undefined,
       email: row.email ?? undefined,
       phone: row.phone ?? undefined,
     };

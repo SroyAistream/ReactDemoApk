@@ -3,7 +3,7 @@
  *
  * Pattern:
  *   1. Load cached data from SQLite immediately → render UI
- *   2. Trigger background API sync → update store on success
+ *   2. Use cached data unless cache is empty or user refreshes
  *   3. On API failure: keep cached data, never clear UI
  */
 import { create } from 'zustand';
@@ -25,6 +25,16 @@ async function ensureDb() {
   }
 }
 
+function hasDisplayableProfile(profile: Profile): boolean {
+  return Boolean(
+    (profile.name || profile.user_name || profile.account || profile.user_id) &&
+    (profile.account_id || profile.account || profile.user_id) &&
+    profile.plan_name &&
+    profile.available_downloads !== undefined &&
+    profile.balance !== undefined
+  );
+}
+
 interface ProfileState {
   profile: Profile | null;
   isLoading: boolean;
@@ -34,7 +44,7 @@ interface ProfileState {
 
   /**
    * Primary entry point.
-   * Renders cache instantly, then syncs API in background.
+   * Renders cache instantly.
    * forceRefresh = true skips cache and shows spinner.
    */
   fetchProfile: (isHubConnected: boolean,forceRefresh?: boolean) => Promise<void>;
@@ -79,24 +89,15 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       console.log('[ProfileStore] Serving cached profile instantly');
       set({ profile: cached, isLoading: false, error: null });
 
-      // Step 2: Background sync (non-blocking)
-      if (!get().isSyncing) {
-        set({ isSyncing: true });
-        profileRepository.syncFromApi(isHubConnected).then((fresh) => {
-          if (fresh) {
-            console.log('[ProfileStore] Background sync: fresh profile received');
-            set({ profile: fresh});
-          } 
-          // else {
-          //   set({ isSyncing: false });
-          // }
-        }).catch((err) => {
-            // Background fails silently, keeping UI completely clean
-            console.warn('[ProfileStore] Background sync failed, keeping cache:', err);
-          }).finally(() => {
-            set({ isSyncing: false });
-          });
+      if (!hasDisplayableProfile(cached)) {
+        console.log('[ProfileStore] Cached profile incomplete, repairing from API...');
+        const fresh = await profileRepository.syncFromApi(isHubConnected);
+        if (fresh) {
+          set({ profile: fresh, error: null });
+        }
       }
+
+      return;
     } else {
       // No cache — must wait for API
       set({ isLoading: true, error: null });

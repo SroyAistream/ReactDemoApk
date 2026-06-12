@@ -34,6 +34,7 @@ export interface DownloadProgress {
   movieId: string | number;
   progress: number; // 0 – 1
   status: 'pending' | 'downloading' | 'completed' | 'failed';
+  localPath?: string;
 }
 
 export type DownloadProgressCallback = (p: DownloadProgress) => void;
@@ -292,5 +293,22 @@ export async function deleteLocalDownload(movieId: string | number): Promise<voi
     }
   } catch (err) {
     console.warn('[DownloadService] deleteLocalDownload error:', err);
+  }
+}
+
+/**
+ * Delete every locally downloaded movie file managed by this app.
+ */
+export async function deleteAllLocalDownloads(): Promise<void> {
+  try {
+    const FS = getFS();
+    if (!FS) return;
+    const dir = `${FS.documentDirectory}${DOWNLOAD_SUBDIR}/`;
+    const info = await FileSystemLegacy.getInfoAsync(dir);
+    if (info.exists) {
+      await FS.deleteAsync(dir, { idempotent: true });
+    }
+  } catch (err) {
+    console.warn('[DownloadService] deleteAllLocalDownloads error:', err);
   }
 }

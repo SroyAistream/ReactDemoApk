@@ -13,22 +13,21 @@
  * 
  * Example:
  *   fileName = Akili_and_Friends_in_TV_Land
- *   Result: http://demo.aistream.tv:88/Akili_and_Friends_in_TV_Land/Akili_and_Friends_in_TV_Land.m3u8
+ *   Result: http://konnekt.aistream.tv:88/Akili_and_Friends_in_TV_Land/Akili_and_Friends_in_TV_Land.m3u8
  * 
  * Base URL Selection:
  *   - Hub connected: http://192.168.39.20:4433/
- *   - Hub not connected (CDN): http://demo.aistream.tv:88/
+ *   - Hub not connected (CDN): http://konnekt.aistream.tv:88/
  */
 
-import { storageHelper } from '../utils/storage_helper';
-import { STORAGE_KEYS } from '../constants/api_constants';
 import { RandomKeyManager } from './RandomKeyManager';
-import { getDeviceId, RIGHTS_USER_AGENT } from './DownloadRightsService';
+import { RIGHTS_USER_AGENT } from './DownloadRightsService';
+import { getAndroidHeaders } from '../network/auth_headers';
 
 // Base URLs - matching Android exactly
-// Always use CDN URL (demo.aistream.tv:88) for playback
+// Always use CDN URL (konnekt.aistream.tv:88) for playback
 // Hub connection only matters for get_download_right API, not for playback URL
-const CDN_BASE_URL = 'http://demo.aistream.tv:88';  // Port 88 for playback!
+const CDN_BASE_URL = 'http://konnekt.aistream.tv:88';  // Port 88 for playback.
 
 export interface PlaybackConfig {
   movieId: string | number;
@@ -113,27 +112,16 @@ function normalizeBaseUrl(baseUrl: string): string {
  * Build playback headers - must be attached to ALL media requests
  */
 async function buildPlaybackHeaders(movieId: string | number): Promise<PlaybackHeaders> {
-  // Get authentication token
-  const token = await storageHelper.getItem(STORAGE_KEYS.TOKEN);
-  const authHeader = token ? `Bearer ${token}` : '';
-  
-  // Get device ID for Fma-Authentication
-  const deviceId = await getDeviceId();
-  const fmaPayload = {
-    device_id: deviceId,
-    player_type: '2000',
-    enc_accounting: '',
-  };
-  const fmaAuth = `Bearer ${JSON.stringify(fmaPayload)}`;
+  const authHeaders = await getAndroidHeaders({ includeAuth: true, includeFma: true });
   
   // Get randomkey from manager
   const randomKey = await RandomKeyManager.getKey(movieId);
   const cookie = randomKey ? RandomKeyManager.formatCookie(randomKey) : '';
   
   return {
-    Authentication: authHeader,
-    'User-Agent': RIGHTS_USER_AGENT,
-    'Fma-Authentication': fmaAuth,
+    Authentication: authHeaders.Authentication || '',
+    'User-Agent': authHeaders['User-Agent'] || RIGHTS_USER_AGENT,
+    'Fma-Authentication': authHeaders['Fma-Authentication'] || '',
     Cookie: cookie,
   };
 }

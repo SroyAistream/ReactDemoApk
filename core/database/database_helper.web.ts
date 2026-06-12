@@ -46,6 +46,13 @@ class DatabaseHelper {
     try { await AsyncStorage.removeItem(KEYS.MOVIES); } catch {}
   }
 
+  async clearAllCachedData() {
+    try {
+      await AsyncStorage.multiRemove(Object.values(KEYS));
+      console.log('[DB] Cleared all cached web data');
+    } catch {}
+  }
+
   async getMoviesCount(): Promise<number> {
     const all = await this.getMovies();
     return all.length;

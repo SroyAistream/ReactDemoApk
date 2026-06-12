@@ -15,6 +15,7 @@ export interface AuthResponse {
   password: string;
   token: string;
   token_expiry_times: string;
+  enc_accounting?: string;
   plan?: {
     name: string;
     expiry: string;

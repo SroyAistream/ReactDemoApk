@@ -25,8 +25,7 @@ export class RoutersLocalDataSource {
       await databaseHelper.saveRouters(rows);
       console.log(`[RoutersLocal] Saved ${rows.length} routers to cache`);
     } catch (error) {
-      console.error('[RoutersLocal] saveRouters error:', error);
-      throw error;
+      console.warn('[RoutersLocal] saveRouters skipped:', error);
     }
   }
 

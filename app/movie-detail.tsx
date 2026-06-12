@@ -373,6 +373,7 @@ const getPreviewUrl = (): string | null => {
     // 2. Ruthlessly strip ANY existing base URLs to get the pure relative path
     let purePath = rawString
       .replace('https://demo.aistream.tv:8833', '')
+      .replace('http://konnekt.aistream.tv:88', '')
       .replace('http://192.168.39.20:88', ''); // Catch both just in case
 
     // Clean up any double or leading slashes

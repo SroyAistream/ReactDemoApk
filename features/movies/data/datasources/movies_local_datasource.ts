@@ -75,8 +75,7 @@ export class MoviesLocalDataSource {
 
       await databaseHelper.saveMovies(rows);
     } catch (error) {
-      console.error('[MoviesLocal] saveMovies error:', error);
-      throw error;
+      console.warn('[MoviesLocal] saveMovies skipped:', error);
     }
   }
 

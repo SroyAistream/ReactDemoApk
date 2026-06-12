@@ -87,7 +87,21 @@ export const useDownloadsStore = create<DownloadsState>((set, get) => ({
         progress: 0,
         movie_json: JSON.stringify(movie),
       });
-      await get().loadDownloads();
+      set((state) => ({
+        downloads: [
+          ...state.downloads.filter((d) => d.movie_id !== movieId),
+          {
+            movie_id: movieId,
+            name: movie?.name ?? 'Unknown',
+            status: 'downloading' as DownloadStatus,
+            progress: 0,
+            movie_json: JSON.stringify(movie),
+          } as DownloadItem,
+        ],
+      }));
+      get().loadDownloads().catch((err) => {
+        console.warn('[DownloadsStore] Initial download list refresh skipped:', err);
+      });
 
       // Fire-and-forget — progress updates arrive via callback
       // downloadMovie(movie, isHubConnected, (progress) => {

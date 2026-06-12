@@ -2,30 +2,42 @@ import { databaseHelper } from '../../../../core/database/database_helper';
 import { storageHelper } from '../../../../core/utils/storage_helper';
 import { STORAGE_KEYS } from '../../../../core/constants/api_constants';
 import { AuthResponse } from '../../domain/entities/user';
+import { buildFmaToken } from '../../../../core/network/auth_headers';
 
 export class AuthLocalDataSource {
   async saveUser(userData: AuthResponse, deviceId: string): Promise<void> {
     try {
-      // Save to SQLite
-      await databaseHelper.saveUser({
-        user_id: userData.user_id,
-        password: userData.password,
-        token: userData.token,
-        token_expiry: userData.token_expiry_times,
+      const fmaToken = buildFmaToken({
         device_id: deviceId,
-        plan_name: userData.plan?.name || '',
-        plan_expiry: userData.plan?.expiry || '',
+        player_type: '2000',
+        enc_accounting: userData.enc_accounting || '',
       });
 
-      // Save to AsyncStorage for quick access
+      // Save to AsyncStorage first so a SQLite cache issue never blocks login.
       await storageHelper.multiSet([
         [STORAGE_KEYS.USER_ID, userData.user_id],
         [STORAGE_KEYS.PASSWORD, userData.password],
         [STORAGE_KEYS.TOKEN, userData.token],
         [STORAGE_KEYS.TOKEN_EXPIRY, userData.token_expiry_times],
         [STORAGE_KEYS.DEVICE_ID, deviceId],
+        [STORAGE_KEYS.ENC_ACCOUNTING, userData.enc_accounting || ''],
+        [STORAGE_KEYS.FMA_TOKEN, fmaToken],
         [STORAGE_KEYS.IS_LOGGED_IN, 'true'],
       ]);
+
+      try {
+        await databaseHelper.saveUser({
+          user_id: userData.user_id,
+          password: userData.password,
+          token: userData.token,
+          token_expiry: userData.token_expiry_times,
+          device_id: deviceId,
+          plan_name: userData.plan?.name || '',
+          plan_expiry: userData.plan?.expiry || '',
+        });
+      } catch (dbError) {
+        console.warn('[AuthLocal] SQLite user cache save skipped:', dbError);
+      }
     } catch (error) {
       console.error('Save user error:', error);
       throw error;
@@ -45,7 +57,9 @@ export class AuthLocalDataSource {
     try {
       const isLoggedIn = await storageHelper.getItem(STORAGE_KEYS.IS_LOGGED_IN);
       const token = await storageHelper.getItem(STORAGE_KEYS.TOKEN);
-      return isLoggedIn === 'true' && !!token;
+      const fmaToken = await storageHelper.getItem(STORAGE_KEYS.FMA_TOKEN);
+      const encAccounting = await storageHelper.getItem(STORAGE_KEYS.ENC_ACCOUNTING);
+      return isLoggedIn === 'true' && (!!token || !!fmaToken || !!encAccounting);
     } catch (error) {
       console.error('Check login error:', error);
       return false;

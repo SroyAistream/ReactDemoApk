@@ -28,10 +28,10 @@
  */
 
 import { storageHelper } from '../utils/storage_helper';
-import { STORAGE_KEYS } from '../constants/api_constants';
 import * as Application from 'expo-application';
 import { Platform } from 'react-native';
 import { RandomKeyManager } from './RandomKeyManager';
+import { getAndroidHeaders } from '../network/auth_headers';
 
 // User-Agent for rights check (must match Android app)
 const RIGHTS_USER_AGENT = 'OGLE-APP/Android';
@@ -41,7 +41,7 @@ const DEVICE_ID_KEY = 'persistent_device_id';
 
 // Rights check API URL (on demo.aistream.tv, but only call when connected to Hub)
 // NOTE: Uses HTTPS and only works when request originates from Media Hub network
-const RIGHTS_API_URL = 'https://demo.aistream.tv/get_download_right';
+const RIGHTS_API_URL = 'https://konnekt.aistream.tv/get_download_right';
 
 // Status code meanings from Android
 export const STATUS_CODES = {
@@ -142,15 +142,8 @@ async function getDeviceId(): Promise<string> {
  * Format: Bearer {JSON}
  */
 async function buildFmaAuthentication(): Promise<string> {
-  const deviceId = await getDeviceId();
-  
-  const fmaPayload = {
-    device_id: deviceId,
-    player_type: '2000',
-    enc_accounting: '',
-  };
-
-  return `Bearer ${JSON.stringify(fmaPayload)}`;
+  const headers = await getAndroidHeaders({ includeAuth: false, includeFma: true });
+  return headers['Fma-Authentication'] || '';
 }
 
 /**
@@ -250,13 +243,11 @@ export async function checkDownloadRights(
   const requestUrl = `${RIGHTS_API_URL}?id=${movieId}&streaming=0`;
   console.log('[DownloadRights] Request URL:', requestUrl);
 
-  // Get authentication token
-  const token = await storageHelper.getItem(STORAGE_KEYS.TOKEN);
-  const authHeader = token ? `Bearer ${token}` : '';
+  const requestHeaders = await getAndroidHeaders({ includeAuth: true, includeFma: true });
+  const authHeader = requestHeaders.Authentication || '';
   console.log('[DownloadRights] Authentication:', maskToken(authHeader));
 
-  // Build Fma-Authentication header
-  const fmaAuth = await buildFmaAuthentication();
+  const fmaAuth = requestHeaders['Fma-Authentication'] || '';
   console.log('[DownloadRights] Fma-Authentication:', fmaAuth);
   console.log('[DownloadRights] User-Agent:', RIGHTS_USER_AGENT);
 
@@ -282,8 +273,8 @@ export async function checkDownloadRights(
     const response = await fetch(requestUrl, {
       method: 'GET',
       headers: {
-        'Authentication': authHeader,
-        'User-Agent': RIGHTS_USER_AGENT,
+        Authentication: authHeader,
+        'User-Agent': requestHeaders['User-Agent'] || RIGHTS_USER_AGENT,
         'Fma-Authentication': fmaAuth,
       },
       signal: controller.signal,

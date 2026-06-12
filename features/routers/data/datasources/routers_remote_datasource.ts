@@ -1,29 +1,21 @@
 import { apiClient } from '../../../../core/network/api_client';
-import { STORAGE_KEYS } from '../../../../core/constants/api_constants';
+import { getApiBaseUrl } from '../../../../core/constants/api_constants';
 import { RouterResponse } from '../../domain/entities/router';
-import { storageHelper } from '../../../../core/utils/storage_helper';
-
-/**
- * Builds the Authentication header using stored Bearer token.
- */
-async function getAuthHeaders(): Promise<Record<string, string>> {
-  const token = await storageHelper.getItem(STORAGE_KEYS.TOKEN);
-  if (token) {
-    return { Authentication: `Bearer ${token}` };
-  }
-  return {};
-}
+import { getAndroidHeaders } from '../../../../core/network/auth_headers';
 
 export class RoutersRemoteDataSource {
   /**
    * Fetches all routers from /fag/routers.
    */
-  async getRouters(): Promise<RouterResponse[]> {
+  async getRouters(isHubConnected = false): Promise<RouterResponse[]> {
     try {
-      const headers = await getAuthHeaders();
+      const headers = await getAndroidHeaders({ includeAuth: false, includeFma: false });
       console.log('[RoutersRemote] Fetching routers...');
 
-      const response = await apiClient.get<any>('/fag/routers', { headers });
+      const response = await apiClient.get<any>('/fag/routers?longi=0&lati=0', {
+        headers,
+        baseURL: getApiBaseUrl(isHubConnected),
+      });
 
       // Handle {status, data:[]} or bare []
       const list: RouterResponse[] = Array.isArray(response)

@@ -1,8 +1,7 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
-// Backend URL for API calls
-// On Emergent platform, /api routes are proxied to port 8001 (FastAPI backend)
+// Backend URL for API calls.
 const getBackendUrl = () => {
   // Use environment variable if available
   const envUrl = process.env.EXPO_PUBLIC_BACKEND_URL;
@@ -26,13 +25,16 @@ const getBackendUrl = () => {
     return envUrl;
   }
   
-  // Direct to demo.aistream.tv for native (no CORS issues)
   return 'https://demo.aistream.tv';
+};
+
+export const getApiBaseUrl = (_isHubConnected = false) => {
+  return getBackendUrl();
 };
 
 // API Configuration
 export const API_CONFIG = {
-  BASE_URL: 'https://demo.aistream.tv',
+  BASE_URL: getApiBaseUrl(false),
   TIMEOUT: 30000,
 };
 
@@ -47,7 +49,7 @@ export const API_ENDPOINTS = {
   GET_RECOMMENDATIONS: '/fag/movies/recommendation',
   
   // Account
-  GET_ACCOUNT: 'fag/account/profile',
+  GET_ACCOUNT: '/fag/account/profile',
 };
 
 // Storage Keys
@@ -55,6 +57,8 @@ export const STORAGE_KEYS = {
   USER_ID: 'user_id',
   PASSWORD: 'password',
   TOKEN: 'token',
+  FMA_TOKEN: 'fma_token',
+  ENC_ACCOUNTING: 'enc_accounting',
   TOKEN_EXPIRY: 'token_expiry',
   DEVICE_ID: 'device_id',
   IS_LOGGED_IN: 'is_logged_in',

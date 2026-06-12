@@ -15,6 +15,7 @@ import { useAuthStore } from '../features/auth/presentation/providers/auth_provi
 import { databaseHelper } from '../core/database/database_helper';
 import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
 import { useHubDetection } from '../core/hooks/useHubDetection';
+import { syncInitialDataAfterLogin } from '../core/services/initial_data_sync';
 
 
 /** Quick hub detection: checks if device IP is in the 192.168.39.x subnet */
@@ -92,8 +93,9 @@ export default function SplashScreen() {
     setPhase('logging');
     setError(null);
     try {
-      const success = await guestLogin();
+      const success = await guestLogin(isHubConnected);
       if (success) {
+        await syncInitialDataAfterLogin(isHubConnected);
         // Also check downloads for freshly-logged-in session
         isHubReachable().then(hubConnected => {
           if (hubConnected) processPendingDownloads(true);

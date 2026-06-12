@@ -1,4 +1,4 @@
-import React, { useEffect, useState, memo, useCallback } from 'react';
+import React, { useEffect, useState, memo, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,21 +7,17 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { STORAGE_KEYS } from '../core/constants/api_constants';
-import { storageHelper } from '../core/utils/storage_helper';
 import { useMoviesStore } from '../features/movies/presentation/providers/movies_provider';
-import { MovieResponse } from '../features/movies/domain/entities/movie';
 import { useHubDetection } from '../core/hooks/useHubDetection';
 import { useDownloadsStore } from '../features/downloads/presentation/providers/downloads_provider';
-import { useProfileStore } from '../features/profile/presentation/providers/profile_provider';
-import { useRoutersStore } from '../features/routers/presentation/providers/routers_provider';
-
-const POSTER_BASE_URL = 'https://demo.aistream.tv:8833/';
+import { getBaseUrl } from '../core/config/app_config';
+import { clearAllAppCache } from '../core/services/app_cache';
 
 const SECTION_HOT_MOVIES = -1;
 const SECTION_RECOMMENDED = -2;
@@ -69,6 +65,7 @@ interface Movie {
   genres?: GenreItem[];
   type?: number;
   vip?: number;
+  country?: string;
   release_date?: string;
   content_type?: number;       
   video_type?: VideoType;      
@@ -155,21 +152,16 @@ export default function HomeScreen() {
   const router = useRouter();
   const [sections, setSections] = useState<MovieSection[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const { processPendingDownloads } = useDownloadsStore();
   const { isHubConnected } = useHubDetection();
 
   const { movies, isLoading, isRefreshing, fetchMovies } = useMoviesStore();
-  const { fetchProfile } = useProfileStore();
-  const { fetchRouters } = useRoutersStore();
 
   useEffect(() => {
     const initializeData = async () => {
       try {
-        if (movies.length === 0) {
-          await fetchMovies(isHubConnected, false); 
-        }
-        const shouldForceUpdate = !isHubConnected;
-        await fetchMovies(isHubConnected, shouldForceUpdate);
+        await fetchMovies(isHubConnected, false);
       } catch (err) {
         console.error("[Index] Cold start initialization failed:", err);
       }
@@ -177,12 +169,37 @@ export default function HomeScreen() {
     initializeData();
   }, [isHubConnected]);
 
+  const filteredMovies = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const allMovies = movies as Movie[];
+
+    if (!query) return allMovies;
+
+    return allMovies.filter((movie) => {
+      const genreText = (movie.genres ?? []).map((genre) => genre.name).join(' ');
+      const videoType = movie.video_type?.name ?? '';
+      const contentKind = movie.content_type === CONTENT_TYPE_SHORT_VIDEO ? 'short video' : 'movie';
+
+      return [
+        movie.name,
+        movie.synopsis,
+        genreText,
+        videoType,
+        contentKind,
+        movie.country,
+        movie.release_date,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [movies, searchQuery]);
+
   useEffect(() => {
-    if (movies.length > 0) {
-      const categorizedSections = categorizeMovies(movies as Movie[]);
-      setSections(categorizedSections);
-    }
-  }, [movies]);
+    const categorizedSections = categorizeMovies(filteredMovies);
+    setSections(categorizedSections);
+  }, [filteredMovies]);
 
   useEffect(() => {
     if (isHubConnected) {
@@ -199,6 +216,10 @@ export default function HomeScreen() {
     setError(null);
     fetchMovies(isHubConnected, true); 
   }, [fetchMovies, isHubConnected]);
+
+  const clearSearch = useCallback(() => {
+    setSearchQuery('');
+  }, []);
 
   const categorizeMovies = (movies: Movie[]): MovieSection[] => {
     const result: MovieSection[] = [];
@@ -304,21 +325,32 @@ export default function HomeScreen() {
     parseFloat(movie.star_score ?? String(movie.rating ?? 0)) || 0;
 
   const getPosterUrl = (movie: Movie): string | null => {
-    if (movie.poster_url && movie.poster_url.startsWith('http')) {
-      return movie.poster_url;
-    }
-    const relativePath = movie.poster ?? movie.theatrical_poster ?? movie.preview ?? null;
-    if (!relativePath) return null;
+    const rawPath = movie.poster_url ?? movie.poster ?? movie.theatrical_poster ?? movie.preview ?? null;
+    if (!rawPath) return null;
 
-    const base = POSTER_BASE_URL.endsWith('/') ? POSTER_BASE_URL : POSTER_BASE_URL + '/';
-    const path = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;
+    let path = rawPath
+      .replace('https://demo.aistream.tv:8833', '')
+      .replace('http://konnekt.aistream.tv:88', '')
+      .replace('http://192.168.39.20:88', '');
+
+    if (/^https?:\/\//i.test(path)) {
+      return path;
+    }
+
+    const baseUrl = getBaseUrl(isHubConnected);
+    const base = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    path = path.startsWith('/') ? path.slice(1) : path;
     return base + path;
   };
 
   const handleLogout = async () => {
-    await storageHelper.removeItem(STORAGE_KEYS.TOKEN);
-    await storageHelper.removeItem(STORAGE_KEYS.IS_LOGGED_IN);
-    router.replace('/');
+    try {
+      await clearAllAppCache();
+    } catch (error) {
+      console.error('Logout cache clear error:', error);
+    } finally {
+      router.replace('/');
+    }
   };
 
   const renderGenreGroup = (genreGroup: GenreGroup, sectionId: number, sectionTitle: string) => {
@@ -328,7 +360,7 @@ export default function HomeScreen() {
       <View key={`${sectionId}-${genreGroup.genreName}`} style={styles.genreGroup}>
         <View style={styles.genreHeader}>
           <Text style={styles.genreTitle}>{genreGroup.genreName}</Text>
-          {genreGroup.movies.length > 4 && (
+          {genreGroup.movies.length > 3 && (
             <TouchableOpacity 
               activeOpacity={0.7}
               onPress={() => {
@@ -342,7 +374,7 @@ export default function HomeScreen() {
                 });
               }}
             >
-              <Text style={styles.seeAllText}>See All</Text>
+              <Text style={styles.seeAllText}>More</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -408,7 +440,11 @@ export default function HomeScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>Discover</Text>
-            <Text style={styles.headerSubtitle}>{sections.length} sections</Text>
+            <Text style={styles.headerSubtitle}>
+              {searchQuery.trim()
+                ? `${filteredMovies.length} result${filteredMovies.length === 1 ? '' : 's'}`
+                : `${sections.length} sections`}
+            </Text>
           </View>
           <View style={styles.headerButtons}>
             <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/hotspot')}>
@@ -426,6 +462,29 @@ export default function HomeScreen() {
           </View>
         </View>
 
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#9CA3AF" />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search movies, genres, videos"
+            placeholderTextColor="#6B7280"
+            style={styles.searchInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity
+              style={styles.clearSearchButton}
+              onPress={clearSearch}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+        </View>
+
         {error && (
           <View style={styles.errorBanner}>
             <Ionicons name="alert-circle" size={20} color="#FF4D6D" />
@@ -437,11 +496,19 @@ export default function HomeScreen() {
 
         {sections.length === 0 && !isLoading && !error && (
           <View style={styles.emptyContainer}>
-            <Ionicons name="film-outline" size={64} color="#6B7280" />
-            <Text style={styles.emptyText}>No movies found</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
-              <Text style={styles.retryButtonText}>Refresh</Text>
-            </TouchableOpacity>
+            <Ionicons name={searchQuery.trim() ? 'search-outline' : 'film-outline'} size={64} color="#6B7280" />
+            <Text style={styles.emptyText}>
+              {searchQuery.trim() ? 'No matching contents found' : 'No movies found'}
+            </Text>
+            {searchQuery.trim() ? (
+              <TouchableOpacity style={styles.retryButton} onPress={clearSearch}>
+                <Text style={styles.retryButtonText}>Clear Search</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
+                <Text style={styles.retryButtonText}>Refresh</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
         <View style={styles.bottomPadding} />
@@ -460,6 +527,9 @@ const styles = StyleSheet.create({
   headerSubtitle: { fontSize: 14, color: '#9CA3AF', marginTop: 4 },
   headerButtons: { flexDirection: 'row', gap: 12 },
   iconButton: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#1C1C1E', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255, 77, 109, 0.3)' },
+  searchContainer: { marginHorizontal: 16, marginBottom: 18, minHeight: 48, borderRadius: 12, backgroundColor: '#1C1C1E', borderWidth: 1, borderColor: 'rgba(255, 77, 109, 0.25)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 10 },
+  searchInput: { flex: 1, minHeight: 46, fontSize: 15, color: '#FFFFFF', paddingVertical: 0 },
+  clearSearchButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   errorBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 77, 109, 0.1)', padding: 12, borderRadius: 12, marginHorizontal: 16, marginBottom: 16, gap: 8 },
   errorText: { flex: 1, fontSize: 13, color: '#FF4D6D' },
   section: { marginBottom: 28 },

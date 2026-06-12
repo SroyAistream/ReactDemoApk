@@ -1,7 +1,8 @@
 import { apiClient } from '../../../../core/network/api_client';
-import { API_ENDPOINTS } from '../../../../core/constants/api_constants';
+import { API_ENDPOINTS, getApiBaseUrl } from '../../../../core/constants/api_constants';
 import { AuthResponse } from '../../domain/entities/user';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAndroidHeaders } from '../../../../core/network/auth_headers';
 
 // ─────────────────────────────────────────────
 // SAFE DATE PARSER (ANDROID-LIKE DEFENSIVE)
@@ -37,7 +38,7 @@ function safeParseDate(value: any): string {
 // ─────────────────────────────────────────────
 export class AuthRemoteDataSource {
 
-  async guestLogin(deviceInfo: any): Promise<AuthResponse> {
+  async guestLogin(deviceInfo: any, isHubConnected = false): Promise<AuthResponse> {
     try {
 
       // ─────────────────────────────────────────
@@ -55,6 +56,7 @@ export class AuthRemoteDataSource {
         os_version: deviceInfo.os_version,
         app: deviceInfo.app,
         app_version: deviceInfo.app_version,
+        recharge_pin: deviceInfo.recharge_pin || '',
       });
 
       console.log('[Auth] Guest login params:', params.toString());
@@ -63,7 +65,11 @@ export class AuthRemoteDataSource {
       // API CALL
       // ─────────────────────────────────────────
       const response = await apiClient.get<any>(
-        `${API_ENDPOINTS.GUEST_LOGIN}?${params.toString()}`
+        `${API_ENDPOINTS.GUEST_LOGIN}?${params.toString()}`,
+        {
+          baseURL: getApiBaseUrl(isHubConnected),
+          headers: await getAndroidHeaders({ includeFma: true, deviceInfo }),
+        }
       );
 
       console.log('[Auth] Raw API response:', JSON.stringify(response, null, 2));
@@ -93,7 +99,7 @@ export class AuthRemoteDataSource {
       // EXTRACT DATA
       // ─────────────────────────────────────────
       const token = response.data.token;
-      const userId = response.data.user_id;
+      const userId = response.data.user_id || deviceInfo.unique_id || deviceInfo.identity || 'offline_guest_id';
 
       console.log('[Auth] Token:', token?.substring(0, 50) + '...');
       console.log('[Auth] User ID:', userId);
@@ -114,6 +120,7 @@ export class AuthRemoteDataSource {
         password: response.data.password || '',
         token: token,
         token_expiry_times: expiry,
+        enc_accounting: response.data.enc_accounting || '',
         plan: {
           name: response.data.plan_name || 'Free Plan',
           expiry: expiry,

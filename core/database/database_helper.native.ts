@@ -15,6 +15,7 @@ const DB_VERSION = 4; // Bumped version logically, though Expo SQLite manages mi
 class DatabaseHelper {
   private db: SQLite.SQLiteDatabase | null = null;
   private initPromise: Promise<void> | null = null;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   // ── Init & Gatekeeper ──────────────────────────────────────────────────────
 
@@ -55,6 +56,20 @@ class DatabaseHelper {
   // ADD THIS ALIAS to prevent ReferenceErrors from typos
   private async ensureDb() {
     return await this.ensureDB();
+  }
+
+  private async runSerializedWrite(
+    callback: (db: SQLite.SQLiteDatabase) => Promise<void>
+  ) {
+    await this.ensureDB();
+
+    const run = async () => {
+      await callback(this.db!);
+    };
+
+    const next = this.writeQueue.then(run, run);
+    this.writeQueue = next.catch(() => {});
+    return next;
   }
 
   private async createTables() {
@@ -169,19 +184,23 @@ class DatabaseHelper {
   // ── Users ───────────────────────────────────────────────────────────────────
 
   async saveUser(userData: any) {
-    await this.ensureDB();
-    await this.db!.runAsync(
-      `INSERT OR REPLACE INTO users
-       (user_id, password, token, token_expiry, device_id, plan_name, plan_expiry, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-      userData.user_id ?? null,
-      userData.password ?? null,
-      userData.token ?? null,
-      userData.token_expiry ?? null,
-      userData.device_id ?? null,
-      userData.plan_name ?? '',
-      userData.plan_expiry ?? ''
-    );
+    await this.runSerializedWrite(async (db) => {
+      if (userData.device_id) {
+        await db.runAsync('DELETE FROM users WHERE device_id = ?', userData.device_id);
+      }
+      await db.runAsync(
+        `INSERT OR REPLACE INTO users
+         (user_id, password, token, token_expiry, device_id, plan_name, plan_expiry)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        userData.user_id ?? '',
+        userData.password ?? '',
+        userData.token ?? '',
+        userData.token_expiry ?? '',
+        userData.device_id ?? '',
+        userData.plan_name ?? '',
+        userData.plan_expiry ?? ''
+      );
+    });
   }
 
   async getUser(deviceId: string) {
@@ -200,11 +219,9 @@ class DatabaseHelper {
   // ── Movies ──────────────────────────────────────────────────────────────────
 
   async saveMovies(movies: any[]) {
-    await this.ensureDB();
-    // Use transaction for bulk insert speed and safety
-    await this.db!.withTransactionAsync(async () => {
+    await this.runSerializedWrite(async (db) => {
       for (const movie of movies) {
-        await this.db!.runAsync(
+        await db.runAsync(
           `INSERT OR REPLACE INTO movies
            (movie_id, name, synopsis, rating, poster_url, preview_url,
             theatrical_poster, preview, duration, publish_date, release_date,
@@ -278,6 +295,17 @@ class DatabaseHelper {
     await this.db!.runAsync('DELETE FROM movies');
   }
 
+  async clearAllCachedData() {
+    await this.runSerializedWrite(async (db) => {
+      await db.runAsync('DELETE FROM users');
+      await db.runAsync('DELETE FROM movies');
+      await db.runAsync('DELETE FROM routers');
+      await db.runAsync('DELETE FROM profile');
+      await db.runAsync('DELETE FROM downloads');
+    });
+    console.log('[DB] Cleared all cached data');
+  }
+
   async getMoviesCount() {
     await this.ensureDB();
     const r = (await this.db!.getFirstAsync(
@@ -289,12 +317,10 @@ class DatabaseHelper {
   // ── Routers ─────────────────────────────────────────────────────────────────
 
   async saveRouters(routers: any[]) {
-    await this.ensureDB();
-    // Wrap in transaction so user never sees an empty list if sync fails
-    await this.db!.withTransactionAsync(async () => {
-      await this.db!.runAsync('DELETE FROM routers');
+    await this.runSerializedWrite(async (db) => {
+      await db.runAsync('DELETE FROM routers');
       for (const r of routers) {
-        await this.db!.runAsync(
+        await db.runAsync(
           `INSERT OR REPLACE INTO routers
            (id, uuid, name, mac, mac_5g, ssid, ssid5g,
             city, region, country, latitude, longitude, config, cached_at)
@@ -331,21 +357,22 @@ class DatabaseHelper {
   // ── Profile ─────────────────────────────────────────────────────────────────
 
   async saveProfile(profile: any) {
-    await this.ensureDB();
-    await this.db!.runAsync(
-      `INSERT OR REPLACE INTO profile
-       (id, user_id, username, plan_name, balance, available_downloads,
-        email, phone, raw_json, cached_at)
-       VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-      profile.user_id ?? null,
-      profile.name ?? profile.username ?? null,
-      profile.plan_name ?? null,
-      String(profile.balance ?? ''),
-      profile.available_downloads ?? 0,
-      profile.email ?? null,
-      profile.phone ?? null,
-      JSON.stringify(profile)
-    );
+    await this.runSerializedWrite(async (db) => {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO profile
+         (id, user_id, username, plan_name, balance, available_downloads,
+          email, phone, raw_json, cached_at)
+         VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        profile.user_id ?? '',
+        profile.name ?? profile.username ?? '',
+        profile.plan_name ?? '',
+        String(profile.balance ?? ''),
+        profile.available_downloads ?? 0,
+        profile.email ?? '',
+        profile.phone ?? '',
+        JSON.stringify(profile)
+      );
+    });
   }
 
   async getProfile(): Promise<any | null> {
@@ -360,18 +387,19 @@ class DatabaseHelper {
   // ── Downloads ────────────────────────────────────────────────────────────────
 
   async saveDownload(download: any): Promise<void> {
-    await this.ensureDB();
-    await this.db!.runAsync(
-      `INSERT OR REPLACE INTO downloads
-       (movie_id, name, status, progress, local_path, movie_json, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
-      String(download.movie_id),
-      download.name ?? '',
-      download.status ?? 'pending',
-      download.progress ?? 0,
-      download.local_path ?? null,
-      download.movie_json ?? null
-    );
+    await this.runSerializedWrite(async (db) => {
+      await db.runAsync(
+        `INSERT OR REPLACE INTO downloads
+         (movie_id, name, status, progress, local_path, movie_json, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        String(download.movie_id),
+        download.name ?? '',
+        download.status ?? 'pending',
+        download.progress ?? 0,
+        download.local_path ?? '',
+        download.movie_json ?? ''
+      );
+    });
   }
 
   async getDownloads(): Promise<any[]> {
@@ -402,20 +430,33 @@ class DatabaseHelper {
     progress?: number,
     localPath?: string
   ): Promise<void> {
-    await this.ensureDB();
-    await this.db!.runAsync(
-      `UPDATE downloads SET status = ?, progress = ?, local_path = COALESCE(?, local_path),
-       updated_at = CURRENT_TIMESTAMP WHERE movie_id = ?`,
-      status ?? 'pending',
-      progress ?? 0,
-      localPath ?? null,
-      String(movieId)
-    );
+    await this.runSerializedWrite(async (db) => {
+      if (localPath !== undefined) {
+        await db.runAsync(
+          `UPDATE downloads SET status = ?, progress = ?, local_path = ?,
+           updated_at = CURRENT_TIMESTAMP WHERE movie_id = ?`,
+          status ?? 'pending',
+          progress ?? 0,
+          localPath,
+          String(movieId)
+        );
+        return;
+      }
+
+      await db.runAsync(
+        `UPDATE downloads SET status = ?, progress = ?,
+         updated_at = CURRENT_TIMESTAMP WHERE movie_id = ?`,
+        status ?? 'pending',
+        progress ?? 0,
+        String(movieId)
+      );
+    });
   }
 
   async deleteDownload(movieId: string | number): Promise<void> {
-    await this.ensureDB();
-    await this.db!.runAsync('DELETE FROM downloads WHERE movie_id = ?', String(movieId));
+    await this.runSerializedWrite(async (db) => {
+      await db.runAsync('DELETE FROM downloads WHERE movie_id = ?', String(movieId));
+    });
   }
 
 //   public async updateDownloadStatus(

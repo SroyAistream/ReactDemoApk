@@ -120,8 +120,12 @@ export class MoviesRepositoryImpl {
       const fresh = await moviesRemoteDataSource.getMovies(isHubConnected);
       
       if (fresh.length > 0) {
-        await moviesLocalDataSource.saveMovies(fresh, isHubConnected);
-        console.log(`[MoviesRepo] Saved ${fresh.length} movies to cache`);
+        try {
+          await moviesLocalDataSource.saveMovies(fresh, isHubConnected);
+          console.log(`[MoviesRepo] Saved ${fresh.length} movies to cache`);
+        } catch (cacheError) {
+          console.warn('[MoviesRepo] Movie cache save skipped:', cacheError);
+        }
       }
       return fresh;
     } catch (error) {

@@ -3,7 +3,7 @@
  *
  * Behavior:
  *   1. Load DB instantly → render UI
- *   2. Always try API in background
+ *   2. Use cached data unless cache is empty or user refreshes
  *   3. Never block UI
  *   4. Never clear UI on API failure
  *   5. Prevent duplicate API calls
@@ -29,8 +29,6 @@ async function ensureDb() {
 // ─────────────────────────────────────────────
 // SYNC LOCK (PREVENT DUPLICATE API CALLS)
 // ─────────────────────────────────────────────
-let syncPromise: Promise<void> | null = null;
-
 // ─────────────────────────────────────────────
 // STORE TYPE
 // ─────────────────────────────────────────────
@@ -137,11 +135,6 @@ if (forceRefresh) {
           error: null
         });
 
-        // ─────────────────────────────────────
-        // STEP 2: BACKGROUND SYNC
-        // ─────────────────────────────────────
-       triggerBackgroundSync(set, get, isHubConnected);
-
         return;
       }
 
@@ -181,29 +174,3 @@ if (forceRefresh) {
 
 }));
 
-// ─────────────────────────────────────────────
-// BACKGROUND SYNC FUNCTION
-// ─────────────────────────────────────────────
-function triggerBackgroundSync(set: any, get: any, isHubConnected: boolean) {
-
-  if (syncPromise) return; // 🔥 prevent duplicate calls
-
-  console.log('[MoviesStore] Starting background sync...');
-
-  set({ isSyncing: true });
-
-  syncPromise = moviesRepository.syncFromApi(isHubConnected)
-    .then((fresh) => {
-      if (fresh.length > 0) {
-        set({ movies: fresh });
-      }
-    })
-    .catch((e) => {
-      // Background fails silently, keeping UI clean
-      console.log('[MoviesStore] Background sync failed, keeping cache:', e);
-    })
-    .finally(() => {
-      set({ isSyncing: false });
-      syncPromise = null;
-    });
-}

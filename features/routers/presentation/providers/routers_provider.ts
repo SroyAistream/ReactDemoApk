@@ -3,7 +3,7 @@
  *
  * Pattern:
  *   1. Load cached data from SQLite immediately → render UI
- *   2. Trigger background API sync → update store on success
+ *   2. Use cached data unless cache is empty or user refreshes
  *   3. On API failure: keep cached data, never clear UI
  */
 import { create } from 'zustand';
@@ -34,7 +34,7 @@ interface RoutersState {
 
   /**
    * Primary entry point.
-   * Renders cache instantly, then syncs API in background.
+   * Renders cache instantly.
    * forceRefresh = true skips cache and shows spinner.
    */
   fetchRouters: (isHubConnected:boolean,forceRefresh?: boolean) => Promise<void>;
@@ -70,18 +70,7 @@ export const useRoutersStore = create<RoutersState>((set, get) => ({
       console.log(`[RoutersStore] Serving ${cached.length} cached routers instantly`);
       set({ routers: cached, isLoading: false, error: null });
 
-      // Step 2: Background sync (non-blocking)
-      if (!get().isSyncing) {
-        set({ isSyncing: true });
-        routersRepository.syncFromApi(isHubConnected).then((fresh) => {
-          if (fresh.length > 0) {
-            console.log(`[RoutersStore] Background sync: ${fresh.length} fresh routers`);
-            set({ routers: fresh, isSyncing: false });
-          } else {
-            set({ isSyncing: false });
-          }
-        }).catch(() => set({ isSyncing: false }));
-      }
+      return;
     } else {
       // No cache — must wait for API
       set({ isLoading: true, error: null });

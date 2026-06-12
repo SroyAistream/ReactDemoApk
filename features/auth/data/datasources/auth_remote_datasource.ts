@@ -1,10 +1,11 @@
 import { apiClient } from '../../../../core/network/api_client';
-import { API_ENDPOINTS } from '../../../../core/constants/api_constants';
+import { API_ENDPOINTS, getApiBaseUrl } from '../../../../core/constants/api_constants';
 import { AuthResponse } from '../../domain/entities/user';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAndroidHeaders } from '../../../../core/network/auth_headers';
 
 export class AuthRemoteDataSource {
-  async guestLogin(deviceInfo: any): Promise<AuthResponse> {
+  async guestLogin(deviceInfo: any, isHubConnected = false): Promise<AuthResponse> {
     try {
       // Build query parameters matching the exact API format
       const params = new URLSearchParams({
@@ -19,12 +20,17 @@ export class AuthRemoteDataSource {
         os_version: deviceInfo.os_version,
         app: deviceInfo.app,
         app_version: deviceInfo.app_version,
+        recharge_pin: deviceInfo.recharge_pin || '',
       });
 
       console.log('Guest login API call with params:', params.toString());
 
       const response = await apiClient.get<any>(
-        `${API_ENDPOINTS.GUEST_LOGIN}?${params.toString()}`
+        `${API_ENDPOINTS.GUEST_LOGIN}?${params.toString()}`,
+        {
+          baseURL: getApiBaseUrl(isHubConnected),
+          headers: await getAndroidHeaders({ includeFma: true, deviceInfo }),
+        }
       );
 
       console.log('Raw API response:', JSON.stringify(response, null, 2));
@@ -43,7 +49,7 @@ export class AuthRemoteDataSource {
         }
 
         // 1. Provide a fallback ID for offline media hub connections
-        const userId = response.data.user_id || 'offline_guest_id';
+        const userId = response.data.user_id || deviceInfo.unique_id || deviceInfo.identity || 'offline_guest_id';
         
         // 2. Check for both singular and plural token expiry keys
         const rawExpiry = response.data.token_expiry_time || response.data.token_expiry_times || 0;
@@ -59,6 +65,7 @@ export class AuthRemoteDataSource {
           password: response.data.password || '',
           token: response.data.token || '',
           token_expiry_times: parsedExpiry,
+          enc_accounting: response.data.enc_accounting || '',
           plan: {
             name: response.data.plan_name || 'Free Plan',
             expiry: parsedExpiry,
