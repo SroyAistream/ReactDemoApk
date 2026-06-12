@@ -67,21 +67,7 @@ export default function SplashScreen() {
       // Brief splash delay so branding is visible
       await new Promise(resolve => setTimeout(resolve, 1500));
 
-      // If already logged in → go straight to home
-      const loggedIn = await checkLogin();
-      if (loggedIn) {
-        // Fire-and-forget: process any pending downloads in background
-        // isHubReachable().then(hubConnected => {
-        //   if (hubConnected) {
-        //     console.log('[Splash] Hub connected – processing pending downloads');
-        //     processPendingDownloads(true);
-        //   }
-        // });
-        router.replace('/home');
-        return;
-      }
-
-      // Otherwise show the guest login button
+      await checkLogin();
       setPhase('ready');
     } catch (err) {
       console.error('Init error:', err);
